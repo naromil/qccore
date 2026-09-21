@@ -8,8 +8,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(MinecraftServer.class)
 public class MinecraftServerMixin {
-	@Inject(at = @At("HEAD"), method = "loadLevel")
-	private void qccore$onLoadLevel(CallbackInfo info) {
-		// Runs at the start of MinecraftServer.loadLevel()V
+	@Inject(at = @At("HEAD"), method = "startServer")
+	private void qccore$onStartServer(CallbackInfo info) {
+		// Runs at the start of MinecraftServer.startServer()
 	}
 }
