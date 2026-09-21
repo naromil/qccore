@@ -1,0 +1,38 @@
+{
+	"schemaVersion": 1,
+	"id": "qccore",
+	"version": "${version}",
+	"name": "QCCore",
+	"description": "Core library and shared systems for QCCore mods.",
+	"authors": [
+		"QCCore"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/Naromil/QCCore"
+	},
+	"license": "MIT",
+	"icon": "assets/qccore/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.qccore.QCCore"
+		],
+		"client": [
+			"com.qccore.client.QCCoreClient"
+		]
+	},
+	"mixins": [
+		"qccore.mixins.json",
+		{
+			"config": "qccore.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~1.20.1",
+		"java": ">=17",
+		"fabric-api": "*"
+	}
+}
