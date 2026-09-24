@@ -1,5 +1,7 @@
 package com.qccore;
 
+import com.qccore.net.QcCommands;
+import com.qccore.net.QcServerNetworking;
 import net.fabricmc.api.ModInitializer;
 import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
@@ -11,6 +13,8 @@ public class QCCore implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		QcServerNetworking.register();
+		QcCommands.register();
 		LOGGER.info("QCCore initialized");
 	}
 

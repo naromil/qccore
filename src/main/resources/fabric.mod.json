@@ -3,7 +3,7 @@
 	"id": "qccore",
 	"version": "${version}",
 	"name": "QCCore",
-	"description": "Core library and shared systems for QCCore mods.",
+	"description": "In-world QC Unit building editor and structure generator.",
 	"authors": [
 		"QCCore"
 	],

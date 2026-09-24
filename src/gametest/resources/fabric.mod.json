@@ -1,0 +1,23 @@
+{
+	"schemaVersion": 1,
+	"id": "qccore-gametest",
+	"version": "1.0.0",
+	"name": "QCCore Game Tests",
+	"description": "In-game tests for QCCore. Development only.",
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-gametest": [
+			"com.qccore.gametest.QcGameTests",
+			"com.qccore.gametest.StructureExportGoldenTest",
+			"com.qccore.gametest.StructureImportGoldenTest",
+			"com.qccore.gametest.PaletteCodecTest"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~1.20.1",
+		"qccore": "*",
+		"fabric-api": "*"
+	}
+}

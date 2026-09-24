@@ -1,0 +1,15 @@
+{
+	"key.categories.qccore": "QCCore",
+	"key.qccore.editor": "Toggle Editor",
+	"key.qccore.reanchor": "Re-anchor Session",
+	"key.qccore.duplicate_layer": "Duplicate Layer",
+	"key.qccore.save": "Save Layout",
+	"key.qccore.build": "Build Layout",
+	"key.qccore.config": "Components",
+	"key.qccore.unit_align": "Align Unit",
+	"key.qccore.overlay": "Toggle Overlay",
+	"qccore.screen.components": "QC Components",
+	"qccore.screen.save": "Save QC Layout",
+	"qccore.screen.files": "QC Files",
+	"qccore.screen.align": "Align QC Unit"
+}

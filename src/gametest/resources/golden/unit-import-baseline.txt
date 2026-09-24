@@ -1,0 +1,25 @@
+L1 U10,10 walls=0011 gates=0000
+L1 U10,11 walls=1001 gates=0001
+L1 U11,10 walls=0110 gates=0010
+L1 U11,11 walls=1100 gates=1100
+L1 U27,27 walls=0000 gates=0000
+L1 U27,28 walls=0000 gates=0000
+L1 U28,27 walls=0000 gates=0000
+L2 U10,10 walls=0011 gates=0000
+L2 U10,11 walls=1001 gates=0001
+L2 U11,10 walls=0110 gates=0010
+L2 U11,11 walls=1100 gates=1100
+L2 U21,21 walls=0000 gates=0000
+L2 U21,22 walls=0000 gates=0000
+L2 U22,21 walls=0000 gates=0000
+L2 U22,22 walls=0000 gates=0000
+L3 U17,17 walls=0000 gates=0000
+framework=minecraft:polished_deepslate
+row=minecraft:chiseled_deepslate
+column=minecraft:spruce_log
+floor=minecraft:spruce_planks
+wall=minecraft:deepslate_tiles
+innerWall=7x7x3 [Extracted from Opened File]
+gate=7x7x3 [Extracted from Opened File]
+outerWall=7x7x3 [Extracted from Opened File]
+innerColumn=3x7x3 [Extracted from Opened File]
