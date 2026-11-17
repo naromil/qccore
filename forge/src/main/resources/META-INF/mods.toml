@@ -1,0 +1,27 @@
+modLoader = "javafml"
+loaderVersion = "[47,)"
+license = "MIT"
+issueTrackerURL = "https://github.com/Naromil/QCCore/issues"
+
+[[mods]]
+modId = "qccore"
+version = "${version}"
+displayName = "QCCore"
+authors = "QCCore"
+displayURL = "https://github.com/Naromil/QCCore"
+logoFile = "assets/qccore/icon.png"
+description = '''In-world QC Unit building editor and structure generator.'''
+
+[[dependencies.qccore]]
+modId = "forge"
+mandatory = true
+versionRange = "[47,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.qccore]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.20.1,1.20.2)"
+ordering = "NONE"
+side = "BOTH"

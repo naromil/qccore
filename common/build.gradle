@@ -1,0 +1,15 @@
+// The loader-neutral mod: everything except the Fabric and Forge glue. Nothing here may import a
+// loader API (net.fabricmc.* / net.minecraftforge.*); the loaders reach it through com.qccore.platform.
+dependencies {
+	testImplementation platform('org.junit:junit-bom:6.0.0')
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+	useJUnitPlatform()
+}
+
+// common is never shipped on its own; the loader jars bundle its classes.
+tasks.named('remapJar') { enabled = false }
+tasks.named('remapSourcesJar') { enabled = false }

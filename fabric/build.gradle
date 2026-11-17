@@ -1,0 +1,28 @@
+// The Fabric glue: entry points, Fabric API networking/events, the input mixin, and the gametests.
+// Loom remaps the mixin targets in place in remapJar, so there is no refmap.
+// The game tests live in their own mod with their own metadata (src/gametest/resources/fabric.mod.json),
+// so the test classes and their fabric-gametest entrypoint never reach the shipped mod jar.
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "qccore-gametest"
+		enableGameTests = true
+		eula = true
+		clearRunDirectory = true
+		username = "Player0"
+	}
+}
+
+dependencies {
+	modImplementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_version}"
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}

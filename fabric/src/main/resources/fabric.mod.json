@@ -1,0 +1,37 @@
+{
+	"schemaVersion": 1,
+	"id": "qccore",
+	"version": "${version}",
+	"name": "QCCore",
+	"description": "In-world QC Unit building editor and structure generator.",
+	"authors": [
+		"QCCore"
+	],
+	"contact": {
+		"homepage": "https://github.com/Naromil/QCCore",
+		"sources": "https://github.com/Naromil/QCCore"
+	},
+	"license": "MIT",
+	"icon": "assets/qccore/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.qccore.fabric.QCCoreFabric"
+		],
+		"client": [
+			"com.qccore.fabric.QCCoreFabricClient"
+		]
+	},
+	"mixins": [
+		{
+			"config": "qccore.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~1.20.1",
+		"java": ">=17",
+		"fabric-api": "*"
+	}
+}

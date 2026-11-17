@@ -1,6 +1,6 @@
 # QCCore
 
-Fabric mod for Minecraft 1.20.1.
+Minecraft 1.20.1 mod for **Fabric** and **Forge**, built from one shared code base.
 
 ## Planning QC buildings in the world
 
@@ -63,50 +63,59 @@ lane (block states allowed, e.g. `oak_log[axis=x]`) and save them as a kit.
 ./gradlew build
 ```
 
-The remapped mod jar lands in `build/libs/qccore-<version>.jar`. Put it in your `mods/` folder alongside
-[Fabric Loader](https://fabricmc.net/use/installer/) and [Fabric API](https://modrinth.com/mod/fabric-api).
+One build produces both mods:
+
+| Loader | Jar | Install alongside |
+|---|---|---|
+| Fabric | `fabric/build/libs/qccore-fabric-<version>.jar` | [Fabric Loader](https://fabricmc.net/use/installer/) and [Fabric API](https://modrinth.com/mod/fabric-api) |
+| Forge | `forge/build/libs/qccore-forge-<version>.jar` | [Forge](https://files.minecraftforge.net/) 47.x for 1.20.1 |
+
+Client and server must run the same loader's jar; the two network protocols are not compatible with each other.
 
 ## Develop
 
 ```bash
-./gradlew runClient    # dev client with the mod loaded
-./gradlew runServer    # dev dedicated server
-./gradlew test         # plain JUnit tests (logic without a running game)
-./gradlew runGameTest  # in-game tests: world mutation and the golden structure baselines
-./gradlew runDatagen   # data generation (no-op until a DataGenerationEntrypoint is added)
-./gradlew genSources   # decompile Minecraft for IDE navigation
+./gradlew :fabric:runClient   # dev Fabric client with the mod loaded
+./gradlew :forge:runClient    # dev Forge client
+./gradlew :fabric:runServer   # dev Fabric dedicated server (working dir fabric/run)
+./gradlew :forge:runServer    # dev Forge dedicated server (working dir forge/run)
+./gradlew :common:test        # plain JUnit tests (logic without a running game)
+./gradlew :fabric:runGameTest # in-game tests: world mutation and the golden structure baselines
+./gradlew genSources          # decompile Minecraft for IDE navigation
 ```
 
-For IDE setup, open the folder as a Gradle project (IntelliJ IDEA) or run `./gradlew eclipse` (Eclipse).
+For IDE setup, open the folder as a Gradle project (IntelliJ IDEA).
 
 ## Layout
 
 ```
-src/main/java      common code, loaded on client and server
-src/main/resources fabric.mod.json, main mixin config, assets
-src/client/java    client-only code (rendering, input, keybinds)
-src/client/resources client-only mixin config
-src/test/java      JUnit tests for logic that needs no running game
-src/gametest/java  game tests (real world, real registry) plus the test mod metadata
-src/gametest/resources fabric.mod.json of the "qccore-gametest" test mod and the golden baselines
+common/   the mod itself, loader-neutral: core logic, world services, packets, client screens/renderer/HUD
+          src/main/java, src/main/resources (assets), src/test/java (JUnit)
+fabric/   Fabric glue: entry points, Fabric API networking and events, the input mixin, fabric.mod.json
+          src/gametest: the "qccore-gametest" test mod and the golden baselines
+forge/    Forge glue: @Mod entry point, a SimpleChannel for the packets, Forge events, META-INF/mods.toml
 ```
 
-Client code lives in its own source set, so it can reference client-only Minecraft classes without them being
-available on the server. Add new packages under `com.qccore` and mirror them in `src/client/java` for client code.
+All code uses Mojang's official names. `common` must not import a loader API: it reaches the loader through
+`com.qccore.platform.QcPlatform` (game directory, sending packets), and the loader glue calls plain hook
+methods for everything incoming (packets, ticks, join/leave, commands, keybindings, world and HUD rendering,
+mouse input). Each loader's jar bundles the `common` classes, remapped to that loader's runtime names.
 
 Anything that touches the block registry needs a running game, because Minecraft's registries cannot be
-bootstrapped in a plain JUnit JVM: those tests belong in `src/gametest/java`, which Loom puts on the classpath of
-the `runGameTest` task only. The golden baselines live with that test mod, so they never reach the shipped jar.
+bootstrapped in a plain JUnit JVM: those tests belong in `fabric/src/gametest/java`. The golden baselines live
+with that test mod, so they never reach a shipped jar. The gametests exercise the shared `common` code, so they
+cover both loaders' building logic; the Forge glue itself is checked by hand (see `AGENTS.md`).
 
 ## Versions
 
-Set in `gradle.properties`: Minecraft `1.20.1`, Yarn `1.20.1+build.10`, Fabric Loader `0.19.5`,
-Fabric API `0.92.12+1.20.1`, Loom `1.17.21`. Check <https://fabricmc.net/develop> for newer builds.
+Set in `gradle.properties`: Minecraft `1.20.1`, Mojang mappings, Architectury Loom `1.17.487`
+(the Loom fork that builds both loaders), Fabric Loader `0.19.5`, Fabric API `0.92.12+1.20.1`,
+Forge `47.4.29`.
 
 ## Icon
 
-`src/main/resources/assets/qccore/icon.png` is the placeholder from the Fabric example mod (CC0) - replace it
-with your own before publishing.
+`common/src/main/resources/assets/qccore/icon.png` is the placeholder from the Fabric example mod (CC0) -
+replace it with your own before publishing.
 
 ## License
 

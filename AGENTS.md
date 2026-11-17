@@ -1,6 +1,7 @@
 # Repository Guidelines
 
-QCCore is a **Fabric 1.20.1 mod** (mod id `qccore`, package root `com.qccore`) that ports the QCSimple desktop
+QCCore is a **Minecraft 1.20.1 mod for Fabric and Forge** (mod id `qccore`, package root `com.qccore`), built
+from one loader-neutral code base in Mojang's names (see *Multi-loader layout* below). It ports the QCSimple desktop
 pipeline into an in-world editor: players configure the nine QC Unit components from `<gameDir>/schematics`, build a
 multi-layer **plan** with the crosshair (Effortless-Building-style tools and shapes, keybinds, wireframes and ghost
 blocks), then export it as a vanilla structure `.nbt` or, in creative, apply it to the world in one undoable step and
@@ -9,7 +10,7 @@ repo (`builds/QCSYSTEM.md`, the `quarterchunk-buildings` skill, `quarterchunk/qc
 of qckit's `road.py`.
 
 `QCCORE_IN_WORLD_QC_UNIT_EDITOR_PLAN.md` (repo root) is the **spec/design document of record**: ordered steps, the
-1.20.1/yarn API facts the code relies on, every user-visible failure message and the verification procedure.
+1.20.1 API facts the code relies on (in Yarn names; the code now uses Mojang names), every user-visible failure message and the verification procedure.
 `README.md` is the short user-facing version; the class-level Javadoc on the `core`, `world`, `net` and `client`
 types is the third source. Read all three before changing behaviour.
 
@@ -40,7 +41,7 @@ types is the third source. Read all three before changing behaviour.
 - **Vanilla `.nbt` only** - component files and saved layouts are regular structure files
   (`{DataVersion, size, palette, blocks, entities}`); there is no `.litematic` or `.schem` reader.
 - **Byte-for-byte parity with QCSimple** is the pipeline's acceptance criterion: the export and import dumps are
-  pinned against QCSimple's golden baselines, copied verbatim into `src/gametest/resources/golden/`.
+  pinned against QCSimple's golden baselines, copied verbatim into `fabric/src/gametest/resources/golden/`.
 
 ## Architecture & Data Flow
 
@@ -77,28 +78,67 @@ QcSchematics.load(file) -> StructureNbt.readFile(file) -> StructureNbt.read(root
   -> QcConfigScreen "Load layout…" replaces QcClientState.layers, adopting the palette the import detected
 ```
 
+### Multi-loader layout
+
+Three Gradle projects, all built with Architectury Loom (`dev.architectury.loom`, the Loom fork that builds Fabric
+and Forge) and **Mojang's official mappings** (`loom.officialMojangMappings()`; the Yarn names of the original
+Fabric-only code were migrated with Loom's `migrateMappings`):
+
+| Project | Contents |
+|---|---|
+| `common/` | the whole mod except the loader glue: `core`, `world`, `net`, `client`, `platform`, the assets, the JUnit tests. **Must not import `net.fabricmc.*` or `net.minecraftforge.*`.** Not shipped on its own (`remapJar` disabled). |
+| `fabric/` | `com.qccore.fabric`: `QCCoreFabric` (`ModInitializer`), `QCCoreFabricClient`, `mixin/MinecraftClientMixin`; `fabric.mod.json`, `qccore.client.mixins.json`; the gametest mod under `src/gametest`. |
+| `forge/` | `com.qccore.forge`: `QCCoreForge` (`@Mod("qccore")`), `QCCoreForgeClient`, `QcForgeNetwork`; `META-INF/mods.toml`, `pack.mcmeta`. `forge/gradle.properties` sets `loom.platform=forge`. |
+
+The root `build.gradle` wires the loader projects the same way: `implementation project(path: ':common',
+configuration: 'namedElements')`, a `loom.mods.qccore` group holding their own `main` plus `common`'s `main` (one mod in
+dev runs), and `jar { from(common output) }`, so each `remapJar` ships one self-contained mod remapped to its
+loader's runtime names (intermediary for Fabric, SRG for Forge).
+
+Seams, in both directions:
+
+- **common -> loader:** `com.qccore.platform.QcPlatform` (`gameDir()`, `sendToServer(packet)`,
+  `sendToPlayer(player, packet)`), whose `Services` each loader entry point installs first thing.
+- **loader -> common:** plain hooks. Server: `QcServerNetworking.handle(player, packet)` (game thread),
+  `onJoin`, `onLeave`, `onServerTick(server)`; `QcCommands.register(dispatcher)`. Client: `QCCoreClient.handle(packet)`
+  (client thread), `QcKeys.create()` (the fourteen `KeyMapping`s to register), `QcInteraction.onClientTick(client)`,
+  `QcOverlayRenderer.render(poseStack, camera)` after the translucent terrain, `QcHud.render(graphics, partialTick)`,
+  `QcInteraction.click(useKey)` for mouse input.
+
+| Concern | Fabric (`fabric/`) | Forge (`forge/`) |
+|---|---|---|
+| packets | one raw play channel per packet id (`ServerPlayNetworking`/`ClientPlayNetworking` with `PacketByteBufs`), payload = the record's `write`, so the wire format is the pre-port one | one `SimpleChannel` `qccore:main`, protocol `"1"`, discriminators in `QcPackets.C2S` then `S2C` order, `consumerMainThread` |
+| join / leave / tick | `ServerPlayConnectionEvents.JOIN/DISCONNECT`, `ServerTickEvents.END_SERVER_TICK` | `PlayerLoggedInEvent`/`PlayerLoggedOutEvent`, `TickEvent.ServerTickEvent` (`END`) |
+| commands | `CommandRegistrationCallback` | `RegisterCommandsEvent` |
+| keys / tick | `KeyBindingHelper`, `ClientTickEvents.END_CLIENT_TICK` | `RegisterKeyMappingsEvent` (mod bus), `TickEvent.ClientTickEvent` (`END`) |
+| world overlay / HUD | `WorldRenderEvents.AFTER_TRANSLUCENT`, `HudRenderCallback` | `RenderLevelStageEvent` at `AFTER_TRANSLUCENT_BLOCKS`, `RegisterGuiOverlaysEvent.registerAboveAll("qccore_hud")` |
+| mouse input | `MinecraftClientMixin` cancels `startAttack`/`startUseItem` at `HEAD` | no mixin: attack presses are drained from `keyAttack.consumeClick()` at `ClientTickEvent` `START` (one click per press), `InputEvent.InteractionKeyMappingTriggered` turns use (main hand) into `click(true)` and cancels every use/attack event (held attack never mines) |
+| game dir | `FabricLoader.getGameDir()` | `FMLPaths.GAMEDIR` |
+
+Known behavioural difference: holding RMB repeats `click(true)` every tick on Fabric (the mixin cancels before
+vanilla sets `rightClickDelay`) but every 4 ticks on Forge (Forge fires the event after setting it). Shapes with more
+than one point debounce held clicks either way.
+
 Server/client split:
 
-- `QCCore.onInitialize()` registers `QcServerNetworking.register()` and `QcCommands.register()`;
-  `QCCoreClient.onInitializeClient()` registers the keybinds, `QcInteraction::onClientTick`,
-  `QcOverlayRenderer.INSTANCE` on `WorldRenderEvents.AFTER_TRANSLUCENT`, `QcHud::render` on `HudRenderCallback.EVENT`
-  and the two `ClientPlayNetworking` receivers.
+- The loader entry points (`QCCoreFabric`/`QCCoreForge`, `QCCoreFabricClient`/`QCCoreForgeClient`) register the
+  hooks above; `QCCore` (common) only holds `MOD_ID`, `LOGGER`, `id(String)`.
 - `QcBuildService.build` validates, then clears the footprint, writes the layout and registers one `QcUnitIndex`
   record per unit. `QcAlignService.align` is creative-gated, prunes, BFS-walks the connected building over
   `origin.offset(dir, 8)` (cap 4096), clears the *old* footprint before rebuilding at the shifted anchor and re-keys
-  the records. Both return `QcResult(ok, message)`, both run on the server thread - receivers hop with
-  `player.server.execute(...)`, client receivers with `MinecraftClient.getInstance().execute(...)`.
+  the records. Both return `QcResult(ok, message)`, both run on the server thread - the loader glue hops onto it
+  (`server.execute(...)` on Fabric, `consumerMainThread` on Forge), and onto the client thread for S2C packets.
 - `QcWorldOps` is the **only world-write seam**: `clearFootprint` (9x9x9 cell plus a 2-block shell outside every
   exposed face), `placeBlocks`, `clearBlocks`, `fillAir` (only replaceable blocks), `restore`, `fits`, writing with
-  `Block.NOTIFY_ALL | Block.FORCE_STATE` and skipping positions outside `World.isValid`/the height limits. Every
+  `Block.UPDATE_ALL | Block.UPDATE_KNOWN_SHAPE` and skipping positions outside `Level.isInWorldBounds`/the height limits. Every
   write method has an overload taking an undo map (first previous state per position).
 - `QcPlanService.apply` (creative, `validate`, compile, fit check) writes clears -> footprint of **full-mask units
   only** (partial units add to what stands) -> blocks -> ground, registers index records and pushes a
   `QcUndoService` entry (per player, in memory, 10 entries / 1.5M blocks, block-entity contents not restored;
   `/qc undo` or `QcUndoC2S`). Plans travel as gzip NBT split into `QcPlanC2S` chunks of 30000 bytes (vanilla caps
   a C2S payload at 32767), reassembled per player in `QcServerNetworking`.
-- `QcUnitIndex extends PersistentState`, state id `qccore_units`, holding
-  `Map<Identifier dimension, LinkedHashMap<BlockPos origin, QcUnitRecord>>`. `QcServerNetworking` pushes every unit
+- `QcUnitIndex extends SavedData`, state id `qccore_units`, holding
+  `Map<ResourceLocation dimension, LinkedHashMap<BlockPos origin, QcUnitRecord>>`. `QcServerNetworking` pushes every unit
   within 128 blocks of a player (nearest first, capped 4096) on join, after a successful build/align, and every 40
   ticks once the player moved 16 blocks.
 - `QcClientState` is the static single-session state (`active`, `overlayVisible`, `anchor`, `alignA/B/C`, `layers`,
@@ -107,11 +147,12 @@ Server/client split:
   HUD, screens and keybinds. Every plan edit goes through `QcInteraction.edit` (snapshot, run, push to `QcHistory`
   only if it changed, bump `planVersion`). `QcKeys` holds fourteen keybinds (G editor, Y re-anchor, H duplicate
   layer, J export, K apply, I components, U align, O overlay, B tools, V shape, N tool, Z undo/Shift redo, R turn
-  template, M ghosts) in category `key.categories.qccore`. Input arrives through `client/mixin/MinecraftClientMixin`, which cancels
-  `doAttack`/`doItemUse` at `HEAD` while a session is active and no screen is open, forwarding to
+  template, M ghosts) in category `key.categories.qccore`. Input arrives through the loader glue (Fabric `MinecraftClientMixin`,
+  Forge input events, see the table above) while a session is active and no screen is open, forwarding to
   `QcInteraction.click(...)`.
 
-Six packets in `net/QcPackets`, all `FabricPacket` records whose `PacketType`s are built in static initialisers:
+Six packets in `net/QcPackets`, all loader-neutral `QcPacket` records (`write(FriendlyByteBuf)` plus a static
+`Type` = channel id, class, reader), listed in `QcPackets.C2S`/`S2C` for the loader glue to register:
 `QcBuildC2S` (`qccore:build`, kept for compatibility; the K key now sends a plan), `QcAlignC2S` (`qccore:align`),
 `QcPlanC2S` (`qccore:plan`), `QcUndoC2S` (`qccore:undo`), `QcIndexS2C` (`qccore:index`) and
 `QcResultS2C` (`qccore:result`). Wire formats:
@@ -133,50 +174,54 @@ Bit layout of `w`/`g`, identical in `LayersCodec`, `QcUnitRecord` and `QcOverlay
 
 | Path | Purpose |
 |---|---|
-| `src/main/java/com/qccore/QCCore.java` | common `ModInitializer`: `MOD_ID`, `LOGGER`, `id(String)`, registers networking + `/qc` |
-| `src/main/java/com/qccore/core/` | algorithm layer: `UnitLayers`/`QcUnit`/`UnitPos`/`UnitSide`, `SpatialUtils`, `Alignment`, converter/exporter/importer, both contexts |
-| `src/main/java/com/qccore/core/nbt/` | `StructureNbt`, `LayersCodec`, `PaletteCodec` |
-| `src/main/java/com/qccore/core/palette/` | the nine components, `UnitComponent`/`QcComponent`/`BlockComponent`, `BlockPalette`, `Defaults`, `InnerStructure` |
-| `src/main/java/com/qccore/world/` | `QcBuildService`, `QcAlignService`, `QcWorldOps`, `QcUnitIndex`, `QcUnitRecord` |
-| `src/main/java/com/qccore/net/` | `QcPackets`, `QcServerNetworking`, `QcCommands` |
-| `src/main/resources/` | `fabric.mod.json`, `qccore.mixins.json` (empty `mixins` list), `assets/qccore/{icon.png,lang/en_us.json}` |
-| `src/client/java/com/qccore/client/` | session, keybinds, crosshair interaction, overlay, HUD, four screens, `QcSchematics` |
-| `src/client/java/com/qccore/client/mixin/` | `MinecraftClientMixin` (the only client mixin) |
-| `src/client/resources/` | `qccore.client.mixins.json` (the only file) |
-| `src/main/java/com/qccore/core/plan/` | the plan model: `QcPlan`, `Cell`, `BuildShape`, `Modifiers`, `ComponentMask`, `Flags`, `RoadStyle`, `RoadKit`, `BlockIds`, `PlanCompiler` |
-| `src/test/java/com/qccore/core/` | 29 JUnit tests over registry-free logic (`plan/` holds the shape, plan and road tests) |
-| `src/gametest/java/com/qccore/gametest/` | 9 gametests plus `TestFixtures` (fixtures + golden plumbing) |
-| `src/gametest/resources/` | the `qccore-gametest` mod metadata and `golden/unit-{export,import}-baseline.txt` |
+| `common/src/main/java/com/qccore/QCCore.java` | shared constants: `MOD_ID`, `LOGGER`, `id(String)` |
+| `common/src/main/java/com/qccore/platform/` | `QcPlatform`: the services the loaders install |
+| `common/src/main/java/com/qccore/core/` | algorithm layer: `UnitLayers`/`QcUnit`/`UnitPos`/`UnitSide`, `SpatialUtils`, `Alignment`, converter/exporter/importer, both contexts |
+| `common/src/main/java/com/qccore/core/nbt/` | `StructureNbt`, `LayersCodec`, `PaletteCodec` |
+| `common/src/main/java/com/qccore/core/palette/` | the nine components, `UnitComponent`/`QcComponent`/`BlockComponent`, `BlockPalette`, `Defaults`, `InnerStructure` |
+| `common/src/main/java/com/qccore/world/` | `QcBuildService`, `QcAlignService`, `QcWorldOps`, `QcUnitIndex`, `QcUnitRecord` |
+| `common/src/main/java/com/qccore/net/` | `QcPackets`, `QcServerNetworking`, `QcCommands` |
+| `common/src/main/resources/` | `assets/qccore/{icon.png,lang/en_us.json}` |
+| `fabric/src/main/` | `com.qccore.fabric` glue + `fabric.mod.json`, `qccore.client.mixins.json` |
+| `forge/src/main/` | `com.qccore.forge` glue + `META-INF/mods.toml`, `pack.mcmeta` |
+| `common/src/main/java/com/qccore/client/` | session, keybinds, crosshair interaction, overlay, HUD, the screens, `QcSchematics` |
+| `common/src/main/java/com/qccore/core/plan/` | the plan model: `QcPlan`, `Cell`, `BuildShape`, `Modifiers`, `ComponentMask`, `Flags`, `RoadStyle`, `RoadKit`, `BlockIds`, `PlanCompiler` |
+| `common/src/test/java/com/qccore/core/` | 29 JUnit tests over registry-free logic (`plan/` holds the shape, plan and road tests) |
+| `fabric/src/gametest/java/com/qccore/gametest/` | 9 gametests plus `TestFixtures` (fixtures + golden plumbing) |
+| `fabric/src/gametest/resources/` | the `qccore-gametest` mod metadata and `golden/unit-{export,import}-baseline.txt` |
 
-The `client` source set exists so client-only Minecraft classes are absent from the server; new client-only code under
-`com.qccore` is mirrored under `src/client/java`.
+There is no separate client source set any more: client classes live in `common` next to the server code and are
+simply never loaded on a dedicated server (nothing server-side references `com.qccore.client`; the Forge glue reaches
+it only behind `FMLEnvironment.dist == Dist.CLIENT` / `DistExecutor`, the Fabric glue only from the client entry point).
 
 ## Development Commands
 
 ```bash
-./gradlew build               # compile all source sets, test + runGameTest through check, then remapJar
-./gradlew test                # the 29 JUnit tests: no game, no block registry
-./gradlew runGameTest         # the 9 gametests in a real dev server world, ending "All 9 required tests passed :)"
-./gradlew runClient           # dev client with the mod loaded (needs a display)
-./gradlew runServer           # dev dedicated server; /qc works from its console
-./gradlew compileClientJava   # compile the client source set only
-./gradlew genSources          # decompile Minecraft for IDE navigation
-./gradlew cleanTest test      # force test re-execution after a caching hit
+./gradlew build                 # all projects: :common:test, :fabric:runGameTest (through check), both remapJars
+./gradlew :common:test          # the 29 JUnit tests: no game, no block registry
+./gradlew :fabric:runGameTest   # the 9 gametests in a real dev server world, ending "All 9 required tests passed :)"
+./gradlew :fabric:runClient     # dev Fabric client (needs a display); :forge:runClient for Forge
+./gradlew :fabric:runServer     # dev dedicated server; /qc works from its console; :forge:runServer for Forge
+./gradlew :forge:compileJava    # compile the Forge glue (and common) only
+./gradlew genSources            # decompile Minecraft for IDE navigation
+./gradlew :common:cleanTest :common:test  # force test re-execution after a caching hit
 ```
 
-Two jars matter and they are **not** the same file: `remapJar` writes the shippable `build/libs/qccore-1.0.0.jar`
-(+ `-sources.jar`), while the plain `jar` task writes the un-remapped `build/devlibs/qccore-1.0.0-dev.jar`. `run/` is
-the client/server working directory (`run/eula.txt`, `run/config/qccore.json`, `run/schematics/`, `run/world` or
-`run/saves`); `build/run/gameTest/` is the gametest working directory (`world/`, `logs/`, `qccore-golden/` with the
+The shippable jars are the `remapJar` outputs `fabric/build/libs/qccore-fabric-1.0.0.jar` and
+`forge/build/libs/qccore-forge-1.0.0.jar` (+ `-sources.jar`, which include `common`'s sources); the plain `jar` tasks
+write the un-remapped dev jars under `<project>/build/devlibs/`. `fabric/run/` and `forge/run/` are the client/server
+working directories (`eula.txt`, `schematics/`, `world` or `saves`); `fabric/build/run/gameTest/` is the gametest
+working directory (`world/`, `logs/`, `qccore-golden/` with the
 dumps of a failing golden test). Loom's wiring adds `acceptGameTestEula`/`deleteGameTestRunDir`, but
 `clearRunDirectory` does **not** recreate the game-test world between runs. CI (`.github/workflows/build.yml`) runs
-`./gradlew build` on `ubuntu-24.04` with JDK 21 (Microsoft) on every push and PR and uploads `build/libs/`.
+`./gradlew build` on `ubuntu-24.04` with JDK 21 (Microsoft) and uploads `fabric/build/libs/` and `forge/build/libs/`.
 
 ## Code Conventions & Common Patterns
 
-- **Indentation is not uniform - match the file you touch.** `src/client/java/**` and
-  `src/main/java/com/qccore/QCCore.java` are **tab**-indented; `src/main/java/com/qccore/{core,net,world}/**`,
-  `src/test/java/**` and `src/gametest/java/**` are **4-space**-indented. No `.editorconfig`, checkstyle or spotless.
+- **Indentation is not uniform - match the file you touch.** `common/.../com/qccore/client/**`,
+  `common/.../com/qccore/QCCore.java`, `fabric/src/main/**` and `forge/src/main/**` are **tab**-indented;
+  `common/.../com/qccore/{core,net,world,platform}/**`, `common/src/test/java/**` and `fabric/src/gametest/java/**` are
+  **4-space**-indented. No `.editorconfig`, checkstyle or spotless.
 - **Naming:** `Qc` prefix on every domain type; `XxxCodec` for wire formats, `XxxService` for server mutations,
   `XxxOps` for world access, `XxxScreen` for GUI, components named after the building part. Getters are `getXxx`,
   records use accessor form, booleans mix `hasXxx` (walls, structures) and `isXxx` (`isGateN`, `isConfigured`);
@@ -188,7 +233,7 @@ dumps of a failing golden test). Loom's wiring adds `acceptGameTestEula`/`delete
 - **Utility classes** are `public final class` + private constructor + `static` methods (`UnitExporter`,
   `UnitImporter`, `UnitBlockConverter`, `SpatialUtils`, `Alignment`, `StructureNbt`, `LayersCodec`, `PaletteCodec`,
   `QcWorldOps`, `QcBuildService`, `QcCommands`). `QcUnitIndex` is the one final class that is instantiated (it is a
-  `PersistentState`), and `BlockPalette` is deliberately **not** a singleton - one instance per session or build.
+  `SavedData`), and `BlockPalette` is deliberately **not** a singleton - one instance per session or build.
 - **Logging:** SLF4J only, `private static final Logger LOGGER = LoggerFactory.getLogger("qccore")` in the
   `core`/`world`/`net` classes (`QCCore` uses `getLogger(MOD_ID)`, the client `"qccore/client"`); messages start with
   `qccore: `, use `{}` placeholders, and a refusal is `warn` while a mutation is `info`.
@@ -235,30 +280,32 @@ dumps of a failing golden test). Loom's wiring adds `acceptGameTestEula`/`delete
 - **No `minecraft:stone` fallback**, deliberately diverging from QCSimple: `BlockComponent.state()` returns `null`
   for a blank or unknown id, that component exports nothing, `QcConfigScreen` paints the field red, and
   `QcBuildService` refuses with `framework block id '<id>' is not a block` (`<empty>` when blank).
-- **`QcWorldOps` is the only class that calls `world.setBlockState`.** Writing blocks elsewhere breaks the "nothing is
+- **`QcWorldOps` is the only class that calls `level.setBlock`.** Writing blocks elsewhere breaks the "nothing is
   written before validation passes" guarantee and the shell logic that leaves neighbouring cells alone.
-- **Mixin / source-set rules.** `qccore.mixins.json` is a common config with an empty `mixins` list, kept only
-  because `fabric.mod.json` references it; `qccore.client.mixins.json` lists `MinecraftClientMixin` only and is
-  marked `"environment": "client"`. A client-only mixin in the common config crashes a dedicated server.
+- **Loader rules.** Nothing in `common` imports a loader API; a new loader service goes into `QcPlatform.Services`
+  and both implementations. The only mixin is Fabric's `MinecraftClientMixin` in `qccore.client.mixins.json`
+  (`"environment": "client"`); Loom remaps its targets in place, so there is no refmap. Forge uses events instead -
+  keep it mixin-free. A packet added to `QcPackets` must be appended to `C2S`/`S2C` (Forge discriminators follow
+  that order; bump `QcForgeNetwork.PROTOCOL` when it changes).
 - **`fabric-gametest` entrypoint rules.** The gametests live in a separate dev-only mod (`qccore-gametest`, own
-  `src/gametest/resources/fabric.mod.json`). Do not set `modId = "qccore"` in `fabricApi.configureTests` (it collides
+  `fabric/src/gametest/resources/fabric.mod.json`), configured by `fabricApi.configureTests` in `fabric/build.gradle`. Do not set `modId = "qccore"` in `fabricApi.configureTests` (it collides
   with the `loom { mods { "qccore" } }` block), and never declare `fabric-gametest` in
-  `src/main/resources/fabric.mod.json`: loom then puts `fabric-gametest-api-v1` on the dev `runClient`/`runServer`
+  `fabric/src/main/resources/fabric.mod.json`: loom then puts `fabric-gametest-api-v1` on the dev `runClient`/`runServer`
   classpaths, where the test classes do not exist, and the run dies with
   `ClassNotFoundException: com.qccore.gametest.QcGameTests`. The published `fabric-api` jar ships no
   `fabric-gametest-api-v1`, so nothing resolves that entrypoint in production; the shipped
-  `build/libs/qccore-1.0.0.jar` contains neither the test classes, nor the baselines, nor the entrypoint.
+  `fabric/build/libs/qccore-fabric-1.0.0.jar` contains neither the test classes, nor the baselines, nor the entrypoint.
 
 ## Important Files
 
-Paths are relative to `src/main/java/com/qccore/`, except the `client/` rows (`src/client/java/com/qccore/`).
+Paths are relative to `common/src/main/java/com/qccore/`, except where a project is named.
 
 | File | Role |
 |---|---|
 | `world/QcBuildService.java` | validates a build (creative, non-empty, <= 4096 units, `layer >= 1`, framework configured, component sizes, height fit) then applies it |
 | `world/QcAlignService.java` | BFS over the connected building, `Alignment.nearestDelta` per axis, clears the old footprint, rebuilds at the shifted anchor, re-keys the index |
 | `world/QcWorldOps.java` | the only world-write seam: `clearFootprint` (cell + 2-block shell), `placeBlocks`, `fits`, with `Block.NOTIFY_ALL \| Block.FORCE_STATE` |
-| `world/QcUnitIndex.java` | the `qccore_units` `PersistentState`: per-dimension `BlockPos -> QcUnitRecord`; `prune` drops records whose origin block is air |
+| `world/QcUnitIndex.java` | the `qccore_units` `SavedData`: per-dimension `BlockPos -> QcUnitRecord`; `prune` drops records whose origin block is air |
 | `core/UnitExporter.java` | the export walk; owns the component call order and the `LinkedHashMap` block map |
 | `core/UnitImporter.java` | grid detection, unit scan, the five single-block extractions, `scanSides`, re-centring on `UnitGrid.CENTER_X/CENTER_Z` |
 | `core/UnitBlockConverter.java` | the two-line facade between the layer model and the block map |
@@ -267,17 +314,22 @@ Paths are relative to `src/main/java/com/qccore/`, except the `client/` rows (`s
 | `core/palette/BlockPalette.java` | the nine components in the exported order, `isConfigured()`, `applyDefaultConfig()` |
 | `client/QcInteraction.java` | crosshair logic: `enterEditorMode`, `reanchor`, `adoptNearbyLattice`, `cursor`, `click`, keybind pump `onClientTick` |
 | `client/QcClientState.java` | the static client session (layers, palette, anchor, lattice, `nearbyUnits`, HUD message) and `reset()` |
-| `client/QcOverlayRenderer.java` | the overlay on `AFTER_TRANSLUCENT` via `getBuffer(RenderLayer.getLines())` + `WorldRenderer.drawBox`; cells, plates, cursor, markers |
-| `client/mixin/MinecraftClientMixin.java` | cancels `doAttack`/`doItemUse` at `HEAD` while a session is active - without it RMB/LMB still edit the world |
-| `build.gradle` | the two test blocks (`fabricApi { configureTests { modId = "qccore-gametest" … } }`, `test { useJUnitPlatform() }` + JUnit BOM), `splitEnvironmentSourceSets()` |
-| both `fabric.mod.json` | the shipped mod (main/client entrypoints, both mixin configs) versus the dev-only test mod with the four `fabric-gametest` entrypoints |
-| `src/gametest/resources/golden/*.txt` | the export (7254 lines) and import (25 lines) baselines copied verbatim from QCSimple; parity is measured against these |
+| `client/QcOverlayRenderer.java` | the overlay after the translucent pass via `getBuffer(RenderType.lines())` + `LevelRenderer.renderLineBox`, flushed by itself; cells, plates, cursor, markers |
+| `platform/QcPlatform.java` | the common -> loader services (game dir, send packet) |
+| `fabric/.../fabric/mixin/MinecraftClientMixin.java` | cancels `startAttack`/`startUseItem` at `HEAD` while a session is active - without it RMB/LMB still edit the world |
+| `forge/.../forge/QCCoreForgeClient.java` | the Forge equivalent without a mixin (attack drain at tick start + `InteractionKeyMappingTriggered`), keys, overlay, HUD |
+| `forge/.../forge/QcForgeNetwork.java` | the `SimpleChannel` carrying `QcPackets` |
+| `build.gradle` (root) | Architectury Loom + Mojang mappings for every project; bundles `common` into the `fabric`/`forge` jars |
+| `common/build.gradle`, `fabric/build.gradle`, `forge/build.gradle` | JUnit (`test { useJUnitPlatform() }` + BOM); `fabricApi { configureTests { modId = "qccore-gametest" … } }` + Fabric API; the Forge dependency |
+| both `fabric.mod.json` | the shipped Fabric mod (main/client entrypoints, the client mixin config) versus the dev-only test mod with the four `fabric-gametest` entrypoints |
+| `forge/src/main/resources/META-INF/mods.toml` | the Forge mod metadata (`${version}` expanded by `processResources`) |
+| `fabric/src/gametest/resources/golden/*.txt` | the export (7254 lines) and import (25 lines) baselines copied verbatim from QCSimple; parity is measured against these |
 
 ## Testing & QA
 
 Two suites, split by whether the code needs the block registry: a plain JUnit JVM cannot bootstrap the registries
-here (`IllegalAccessError` from yarn's split package inside `net.minecraft.registry.SimpleRegistry`), so anything
-touching `Registries.BLOCK` is a gametest instead.
+here (under Yarn this was an `IllegalAccessError` from a split package inside the registry classes; not re-checked under
+Mojang names), so anything touching `BuiltInRegistries.BLOCK` is a gametest instead.
 
 | Suite | Files | Covers |
 |---|---|---|
@@ -286,14 +338,14 @@ touching `Registries.BLOCK` is a gametest instead.
 
 Golden mechanics: baselines are **classpath resources** (`/golden/unit-export-baseline.txt`) inside the test mod,
 so they never reach the shipped jar; comparison is exact, order-sensitive line equality after CRLF/CR -> LF
-normalisation; a failing run leaves the dump at `build/run/gameTest/qccore-golden/export-actual.txt` (and
+normalisation; a failing run leaves the dump at `fabric/build/run/gameTest/qccore-golden/export-actual.txt` (and
 `import-actual.txt`) for a plain shell `diff`; there is **no regenerate/update flag**; the export dump is sorted
 explicitly and the import dump renders extracted structures as size + path only, because the palette ordering inside
 an extracted tag is not deterministic. The game-test world is not recreated between runs, so
 `QcGameTests.clearIndexArea` clears the test area's index records first. A JUnit XML report comes from
 `-Dfabric-api.gametest.report-file=<file>`.
 
-**Not covered:** the screens, `QcInteraction` (tools, shapes, the box height ray), `QcHistory`, `QcOverlayRenderer`,
+**Not covered:** the Forge glue (no Forge gametests; the gametests run on Fabric and exercise the shared code), the screens, `QcInteraction` (tools, shapes, the box height ray), `QcHistory`, `QcOverlayRenderer`,
 `QcBlockPreview`, `QcHud`, `QcSchematics`, `QcTemplates`, `QcKits`, the chunked transfer, the push loop, the `/qc`
 output and the input mixin have no automated tests, and `QcGameTests` does not cover erase or wall-flag editing.
 
@@ -316,34 +368,48 @@ a template saved to `run/qccore/templates/` and stamped rotated 90 deg with the 
 xdotool mouse cannot turn the camera (raw input), so shapes were only exercised from one aim; the box height ray,
 mirrors and partition tools are unexercised in a client.
 
+**Forge port smoke (2026-11-17):** after the Yarn -> Mojang migration `./gradlew build` passed 29/29 JUnit and
+`All 9 required tests passed :)` (golden export/import parity unchanged). `:forge:runServer` and `:fabric:runServer`
+loaded the mod and answered `qc info` -> `0 QC unit(s) in minecraft:overworld` and `qc forget 64` -> `forgot 0 QC
+unit(s)`. `:forge:runClient --args="--quickPlaySingleplayer qc"` (creative superflat, Xvfb + xdotool): G showed the
+editor HUD, RMB planned a unit with ghost blocks, K was refused "does not fit inside this world's height" (result
+packet back), after Y it applied 1 unit / 750 blocks through the chunked plan packet; holding LMB on a placed block did
+not mine it, RMB then LMB on an empty cell planned and erased a unit. Forge undo, align, the screens and templates
+were not exercised in a client. The jars were checked to carry SRG (`m_…`) resp. intermediary (`method_…`) names.
+
 **Manual checklist (human required):** wall and gate plates on a shared face (blue, then green with Ctrl), a second
 layer placed 8 blocks up, `H` duplicating a layer, `Y` re-anchoring, the `U` align screen moving a placed building,
 `O` toggling the overlay, and the config screen's `Choose…` / `Load layout…` flows including a size-mismatch
 rejection.
 
-**Reproducible smoke recipes:** for the server, put `eula=true` in `run/eula.txt`, start `./gradlew runServer` as a
+**Reproducible smoke recipes:** for the server, put `eula=true` in `<loader>/run/eula.txt`, start `./gradlew :<loader>:runServer` as a
 background service (ready when the log contains `Done (`) and drive its stdin through a FIFO with `qc info`,
-`qc forget 64` and `stop` (`/qc` needs permission level 2, which the console has). For the client, launch
-`./gradlew runClient` and drive it with `xdotool` against the display loom allocates - read `DISPLAY` from the game
-process' `/proc/<pid>/environ`, since `xvfb-run` gives it a private one - and keep a screenshot as visual proof.
+`qc forget 64` and `stop` (`/qc` needs permission level 2, which the console has). For the client, start `Xvfb :99`, launch
+`DISPLAY=:99 ./gradlew :<loader>:runClient --args="--quickPlaySingleplayer qc"` (a world in `<loader>/run/saves/qc`; a
+creative superflat one can be made by running the dedicated server with `gamemode=creative` and
+`level-type=minecraft:flat` and copying `run/world`), drive it with `xdotool` and keep a screenshot as visual proof.
+`xdotool` may need `apt-get install -y xdotool`.
 
 ## Runtime/Tooling Preferences
 
 - **JDK 21 is the build machine, Java 17 is the target bytecode.** `gradle.properties` holds every version
-  (`minecraft_version=1.20.1`, `yarn_mappings=1.20.1+build.10`, `loader_version=0.19.5`, `loom_version=1.17.21`,
-  `fabric_api_version=0.92.12+1.20.1`, `version=1.0.0`, `group=com.qccore`, `archives_base_name=qccore`) and is the
-  single source of truth; `build.gradle` only reads `project.*`. There is **no `toolchain` block** - the bytecode
+  (`minecraft_version=1.20.1`, `loom_version=1.17.487` (Architectury Loom), `loader_version=0.19.5`,
+  `fabric_api_version=0.92.12+1.20.1`, `forge_version=47.4.29`, `version=1.0.0`, `group=com.qccore`,
+  `archives_base_name=qccore`) and is the single source of truth; the build files only read `rootProject.*`.
+  `forge/gradle.properties` holds only `loom.platform=forge`. There is **no `toolchain` block** - the bytecode
   level comes from `tasks.withType(JavaCompile) { it.options.release = 17 }`.
 - **Build with the wrapper:** `./gradlew` (Gradle **9.5.1**, `-bin` distribution, wrapper jar committed,
   `distributionSha256Sum` pinned). `org.gradle.jvmargs=-Xmx2G`, `org.gradle.parallel=true` and
   `org.gradle.configuration-cache=false` (loom is not configuration-cache clean).
-- **Loom essentials:** `splitEnvironmentSourceSets()` plus a `loom { mods { "qccore" { sourceSet main; sourceSet
-  client } } }` block; `fabricApi { configureTests { … } }` creates the `gametest` source set and the `runGameTest`
-  task; `withSourcesJar()` explains the `-sources.jar`. Remapped dependency artifacts land in `.gradle/loom-cache/`;
-  `build/devlibs/` holds the un-remapped dev jar.
+- **Loom essentials:** Architectury Loom in every project with `mappings loom.officialMojangMappings()`; the loader
+  projects declare `loom { mods { "qccore" { sourceSet sourceSets.main; sourceSet 'main', ':common' } } }`;
+  `fabricApi { configureTests { … } }` (fabric) creates the `gametest` source set and the `runGameTest` task;
+  `withSourcesJar()` explains the `-sources.jar`. Remapped dependency artifacts land in `.gradle/loom-cache/`.
+  Plugin and Forge artifacts come from `maven.architectury.dev` and `maven.minecraftforge.net` (both must be reachable);
+  Maven Central sometimes answers 429 on a cold cache - retry, `--max-workers=2` helps.
 - **Display:** `DISPLAY=:1` is exported in this environment and `xvfb-run`/`xdotool` are on `PATH`, so `runClient` can
   be launched and driven headlessly; no Xvfb process runs by default, so a display has to be started for a client
   smoke.
-- **Gitignored/disposable:** `build/`, `run/`, `logs/`, `.gradle/`, `out/`, `classes/`, `.codebase-index/`, IDE
+- **Gitignored/disposable:** `build/`, `run/` (any depth, so `fabric/run`, `forge/run`), `logs/`, `.gradle/`, `out/`, `classes/`, `.codebase-index/`, IDE
   files (`*.ipr`, `*.iws`), `hs_err_*.log`, `*.hprof`, `*.jfr`. Never edit anything under `build/`;
-  `src/gametest/resources/golden/` is the opposite and is checked in on purpose.
+  `fabric/src/gametest/resources/golden/` is the opposite and is checked in on purpose.

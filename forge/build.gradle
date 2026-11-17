@@ -1,0 +1,15 @@
+// The Forge glue: the @Mod entry point, a SimpleChannel for the packets, and Forge events in place
+// of the Fabric API callbacks and of the Fabric input mixin. loom.platform=forge (forge/gradle.properties)
+// makes Architectury Loom set this project up for Forge and remap the jar to SRG names.
+dependencies {
+	forge "net.minecraftforge:forge:${rootProject.minecraft_version}-${rootProject.forge_version}"
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("META-INF/mods.toml") {
+		expand "version": version
+	}
+}

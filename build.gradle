@@ -1,103 +1,70 @@
+// Every project is built with Architectury Loom, the Loom fork that builds both Fabric and Forge mods.
+// A project's platform comes from `loom.platform` in its gradle.properties (forge/gradle.properties);
+// without it the project is a Fabric-style project (common and fabric).
 plugins {
-	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
-	id 'maven-publish'
+	id 'dev.architectury.loom' version "${loom_version}" apply false
 }
 
-loom {
-	splitEnvironmentSourceSets()
+subprojects {
+	apply plugin: 'dev.architectury.loom'
 
-	mods {
-		"qccore" {
-			sourceSet sourceSets.main
-			sourceSet sourceSets.client
-		}
+	version = rootProject.version
+	group = rootProject.group
+	base {
+		archivesName = "${rootProject.archives_base_name}-${project.name}"
+	}
+
+	loom {
+		silentMojangMappingsLicense()
+	}
+
+	dependencies {
+		minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
+		// Mojang's official names everywhere: the one naming both Fabric (remapped to intermediary)
+		// and Forge (remapped to SRG) can be built from.
+		mappings loom.officialMojangMappings()
+	}
+
+	tasks.withType(JavaCompile).configureEach {
+		it.options.encoding = 'UTF-8'
+		it.options.release = 17
+	}
+
+	java {
+		withSourcesJar()
+		sourceCompatibility = JavaVersion.VERSION_17
+		targetCompatibility = JavaVersion.VERSION_17
 	}
 }
 
-// The game tests live in their own mod with their own metadata (src/gametest/resources/fabric.mod.json),
-// so the test classes and their fabric-gametest entrypoint never reach the shipped mod jar.
-fabricApi {
-	configureTests {
-		createSourceSet = true
-		modId = "qccore-gametest"
-		enableGameTests = true
-		eula = true
-		clearRunDirectory = true
-		username = "Player0"
+// The loader projects compile against common's named classes and bundle them into their jar,
+// so each shipped jar is one self-contained mod.
+configure([project(':fabric'), project(':forge')]) {
+	dependencies {
+		implementation(project(path: ':common', configuration: 'namedElements')) { transitive = false }
 	}
-}
 
-repositories {
-	// Add repositories to retrieve artifacts from in here.
-	// You should only use this when depending on other mods because
-	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
-	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
-	// for more information about repositories.
-}
-
-dependencies {
-	// To change the versions see the gradle.properties file
-	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
-	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-
-	// Fabric API. This is technically optional, but you probably want it anyway.
-	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-
-	testImplementation platform('org.junit:junit-bom:6.0.0')
-	testImplementation 'org.junit.jupiter:junit-jupiter'
-	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
-
-test {
-	useJUnitPlatform()
-}
-
-processResources {
-	def version = project.version
-	inputs.property "version", version
-
-	filesMatching("fabric.mod.json") {
-		expand "version": version
-	}
-}
-
-tasks.withType(JavaCompile).configureEach {
-	it.options.release = 17
-}
-
-java {
-	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
-	// if it is present.
-	// If you remove this line, sources will not be generated.
-	withSourcesJar()
-
-	sourceCompatibility = JavaVersion.VERSION_17
-	targetCompatibility = JavaVersion.VERSION_17
-}
-
-jar {
-	def projectName = project.name
-	inputs.property "projectName", projectName
-
-	from("LICENSE") {
-		rename { "${it}_$projectName"}
-	}
-}
-
-// configure the maven publication
-publishing {
-	publications {
-		create("mavenJava", MavenPublication) {
-			from components.java
+	loom {
+		mods {
+			"qccore" {
+				sourceSet sourceSets.main
+				sourceSet 'main', ':common'
+			}
 		}
 	}
 
-	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
-	repositories {
-		// Add repositories to publish to here.
-		// Notice: This block does NOT have the same function as the block in the top level.
-		// The repositories here will be used for publishing your artifact, not for
-		// retrieving dependencies.
+	tasks.named('compileJava') {
+		dependsOn ':common:classes'
+	}
+
+	jar {
+		from(project(':common').sourceSets.main.output)
+		from(rootProject.file('LICENSE')) {
+			rename { "${it}_qccore" }
+		}
+	}
+
+	sourcesJar {
+		from(project(':common').sourceSets.main.allSource)
 	}
 }
