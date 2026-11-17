@@ -39,8 +39,9 @@ or **export** it as a vanilla structure `.nbt`.
 4. **Modifiers** (tools screen): mirror east-west and/or north-south through a mirror cell, and an array
    (copies + a step in cells along x / layer / z). They apply to every shape and to templates.
 5. **Undo/redo** plan edits with **Z** / **Shift+Z** (100 steps). **H** copies the aimed layer one up.
-6. **K** applies the plan to the world. **/qc undo** (or "Undo last apply" in the tools screen)
-   reverts the last 10 applies (in memory; block-entity contents are not restored).
+6. **K** applies the plan to the world. **/qc undo** (or "Undo apply" in the tools screen)
+   reverts the last 10 applies (in memory; block-entity contents are not restored), and **/qc redo**
+   (or "Redo apply") puts an undone apply back until the next apply.
    **J** exports the plan as `.nbt` to the schematics folder, sparse by default, or with the clearing
    written as air.
 7. **M** toggles the ghost-block preview, **O** the wireframes, **I** opens the nine components and

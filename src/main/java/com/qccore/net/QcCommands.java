@@ -20,9 +20,9 @@ import java.util.Map;
 import com.qccore.world.QcUnitRecord;
 
 /**
- * The {@code /qc} command: what the index knows, how to forget a region of it and how to undo the
- * last applied plan. Every child needs permission level 2; {@code info} and {@code forget} work from
- * the dedicated server console as well, {@code undo} needs a player.
+ * The {@code /qc} command: what the index knows, how to forget a region of it and how to undo and
+ * redo applied plans. Every child needs permission level 2; {@code info} and {@code forget} work from
+ * the dedicated server console as well, {@code undo} and {@code redo} need a player.
  */
 public final class QcCommands {
 
@@ -41,6 +41,9 @@ public final class QcCommands {
                         .then(CommandManager.literal("undo")
                                 .requires(source -> source.hasPermissionLevel(2))
                                 .executes(context -> undo(context.getSource())))
+                        .then(CommandManager.literal("redo")
+                                .requires(source -> source.hasPermissionLevel(2))
+                                .executes(context -> redo(context.getSource())))
                         .then(CommandManager.literal("forget")
                                 .requires(source -> source.hasPermissionLevel(2))
                                 .executes(context -> forget(context.getSource(), DEFAULT_RADIUS))
@@ -72,6 +75,18 @@ public final class QcCommands {
     private static int undo(ServerCommandSource source) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayerEntity player = source.getPlayerOrThrow();
         QcResult result = QcUndoService.undo(player);
+        if (!result.ok()) {
+            source.sendError(Text.literal(result.message()));
+            return 0;
+        }
+        source.sendFeedback(() -> Text.literal(result.message()), false);
+        QcServerNetworking.push(player);
+        return 1;
+    }
+
+    private static int redo(ServerCommandSource source) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity player = source.getPlayerOrThrow();
+        QcResult result = QcUndoService.redo(player);
         if (!result.ok()) {
             source.sendError(Text.literal(result.message()));
             return 0;

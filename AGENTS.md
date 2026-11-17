@@ -95,8 +95,12 @@ Server/client split:
 - `QcPlanService.apply` (creative, `validate`, compile, fit check) writes clears -> footprint of **full-mask units
   only** (partial units add to what stands) -> blocks -> ground, registers index records and pushes a
   `QcUndoService` entry (per player, in memory, 10 entries / 1.5M blocks, block-entity contents not restored;
-  `/qc undo` or `QcUndoC2S`). Plans travel as gzip NBT split into `QcPlanC2S` chunks of 30000 bytes (vanilla caps
-  a C2S payload at 32767), reassembled per player in `QcServerNetworking`.
+  `/qc undo` or `QcUndoC2S`). Undo swaps an entry with the world, so its inverse lands on a per-player redo stack
+  (`/qc redo` or `QcRedoC2S`, same limits); a new apply drops the redo stack. Plans travel as gzip NBT split into
+  `QcPlanC2S` chunks of 30000 bytes (vanilla caps a C2S payload at 32767), reassembled per player in
+  `QcServerNetworking`: the first chunk fixes the transfer's total (<= 256 chunks) and is refused outside creative
+  before anything is buffered, and the reassembled bytes are inflated under a 32 MiB `NbtTagSizeTracker` budget
+  (`QcServerNetworking.decode`), never with the unbounded `NbtIo.readCompressed`.
 - `QcUnitIndex extends PersistentState`, state id `qccore_units`, holding
   `Map<Identifier dimension, LinkedHashMap<BlockPos origin, QcUnitRecord>>`. `QcServerNetworking` pushes every unit
   within 128 blocks of a player (nearest first, capped 4096) on join, after a successful build/align, and every 40
@@ -111,9 +115,9 @@ Server/client split:
   `doAttack`/`doItemUse` at `HEAD` while a session is active and no screen is open, forwarding to
   `QcInteraction.click(...)`.
 
-Six packets in `net/QcPackets`, all `FabricPacket` records whose `PacketType`s are built in static initialisers:
+Seven packets in `net/QcPackets`, all `FabricPacket` records whose `PacketType`s are built in static initialisers:
 `QcBuildC2S` (`qccore:build`, kept for compatibility; the K key now sends a plan), `QcAlignC2S` (`qccore:align`),
-`QcPlanC2S` (`qccore:plan`), `QcUndoC2S` (`qccore:undo`), `QcIndexS2C` (`qccore:index`) and
+`QcPlanC2S` (`qccore:plan`), `QcUndoC2S` (`qccore:undo`), `QcRedoC2S` (`qccore:redo`), `QcIndexS2C` (`qccore:index`) and
 `QcResultS2C` (`qccore:result`). Wire formats:
 
 | Codec | Shape |
@@ -144,7 +148,8 @@ Bit layout of `w`/`g`, identical in `LayersCodec`, `QcUnitRecord` and `QcOverlay
 | `src/client/java/com/qccore/client/mixin/` | `MinecraftClientMixin` (the only client mixin) |
 | `src/client/resources/` | `qccore.client.mixins.json` (the only file) |
 | `src/main/java/com/qccore/core/plan/` | the plan model: `QcPlan`, `Cell`, `BuildShape`, `Modifiers`, `ComponentMask`, `Flags`, `RoadStyle`, `RoadKit`, `BlockIds`, `PlanCompiler` |
-| `src/test/java/com/qccore/core/` | 29 JUnit tests over registry-free logic (`plan/` holds the shape, plan and road tests) |
+| `src/test/java/com/qccore/core/` | JUnit tests over registry-free logic (`plan/` holds the shape, plan and road tests) |
+| `src/test/java/com/qccore/net/` | `PlanRequestDecodeTest`: the bounded inflate of a plan request |
 | `src/gametest/java/com/qccore/gametest/` | 9 gametests plus `TestFixtures` (fixtures + golden plumbing) |
 | `src/gametest/resources/` | the `qccore-gametest` mod metadata and `golden/unit-{export,import}-baseline.txt` |
 
@@ -155,7 +160,7 @@ The `client` source set exists so client-only Minecraft classes are absent from 
 
 ```bash
 ./gradlew build               # compile all source sets, test + runGameTest through check, then remapJar
-./gradlew test                # the 29 JUnit tests: no game, no block registry
+./gradlew test                # the 31 JUnit tests: no game, no block registry
 ./gradlew runGameTest         # the 9 gametests in a real dev server world, ending "All 9 required tests passed :)"
 ./gradlew runClient           # dev client with the mod loaded (needs a display)
 ./gradlew runServer           # dev dedicated server; /qc works from its console
@@ -281,8 +286,8 @@ touching `Registries.BLOCK` is a gametest instead.
 
 | Suite | Files | Covers |
 |---|---|---|
-| JUnit, 29 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest`, `plan/BuildShapeTest`, `plan/QcPlanTest`, `plan/RoadKitTest` | lattice math and residues; the index NBT round trip plus malformed state; the `w`/`g` bit layout and a playlist round trip; shapes and modifiers; partitions, rotation/mirror of flags, normalise/merge, `PlanCodec` round trip; the road contract (7 wide, lanes, joints, corner posts, medallion, plaza post, give-way) |
-| Gametests, 9 tests | `QcGameTests`, `QcPlanGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, an align moves the building, layer 0 and non-creative are refused; a plan (full unit, framework-only unit, cleared cell, road) applies and `/qc undo` restores every block and record; plan refusals are user-visible |
+| JUnit, 31 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest`, `plan/BuildShapeTest`, `plan/QcPlanTest`, `plan/RoadKitTest`, `net/PlanRequestDecodeTest` | lattice math and residues; the index NBT round trip plus malformed state; the `w`/`g` bit layout and a playlist round trip; shapes and modifiers; partitions, rotation/mirror of flags, normalise/merge, `PlanCodec` round trip; the road contract (7 wide, lanes, joints, corner posts, medallion, plaza post, give-way); a plan request round-trips through the bounded inflate and a gzip bomb is refused |
+| Gametests, 9 tests | `QcGameTests`, `QcPlanGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, an align moves the building, layer 0 and non-creative are refused; a plan (full unit, framework-only unit, cleared cell, road) applies, `/qc undo` restores every block and record, redo re-applies it, a second undo restores it again and a new apply drops the redo stack; plan refusals are user-visible |
 
 Golden mechanics: baselines are **classpath resources** (`/golden/unit-export-baseline.txt`) inside the test mod,
 so they never reach the shipped jar; comparison is exact, order-sensitive line equality after CRLF/CR -> LF

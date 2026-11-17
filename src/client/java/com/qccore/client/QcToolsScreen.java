@@ -4,6 +4,7 @@ import com.qccore.core.plan.Cell;
 import com.qccore.core.plan.ComponentMask;
 import com.qccore.core.plan.Modifiers;
 import com.qccore.core.plan.QcPlan;
+import com.qccore.net.QcPackets.QcRedoC2S;
 import com.qccore.net.QcPackets.QcUndoC2S;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.DrawContext;
@@ -138,11 +139,15 @@ public class QcToolsScreen extends Screen {
 			QcInteraction.redo();
 		}).dimensions(left + 102, bottom, 98, 20).build());
 		this.addDrawableChild(ButtonWidget.builder(Text.literal("Clear plan"), b -> QcInteraction.clearPlan())
-				.dimensions(right, bottom, 98, 20).build());
-		this.addDrawableChild(ButtonWidget.builder(Text.literal("Undo last apply"), b -> {
+				.dimensions(right, bottom, 65, 20).build());
+		this.addDrawableChild(ButtonWidget.builder(Text.literal("Undo apply"), b -> {
 			ClientPlayNetworking.send(new QcUndoC2S());
 			close();
-		}).dimensions(right + 102, bottom, 98, 20).build());
+		}).dimensions(right + 67, bottom, 65, 20).build());
+		this.addDrawableChild(ButtonWidget.builder(Text.literal("Redo apply"), b -> {
+			ClientPlayNetworking.send(new QcRedoC2S());
+			close();
+		}).dimensions(right + 134, bottom, 66, 20).build());
 		bottom += ROW;
 		this.addDrawableChild(ButtonWidget.builder(Text.literal("Apply plan to world"), b -> {
 			commit();

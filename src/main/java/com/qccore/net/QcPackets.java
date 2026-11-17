@@ -133,4 +133,19 @@ public final class QcPackets {
             return TYPE;
         }
     }
+
+    /** Ask the server to redo the player's most recently undone plan apply. */
+    public record QcRedoC2S() implements FabricPacket {
+
+        public static final PacketType<QcRedoC2S> TYPE = PacketType.create(QCCore.id("redo"), buf -> new QcRedoC2S());
+
+        @Override
+        public void write(PacketByteBuf buf) {
+        }
+
+        @Override
+        public PacketType<?> getType() {
+            return TYPE;
+        }
+    }
 }

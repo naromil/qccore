@@ -17,7 +17,7 @@ public final class QcHud {
 	private static final String KEYBINDS =
 			"B tools  N tool  V shape  Z undo (Shift redo)  R turn template  M ghosts  K apply  J export  I components";
 	private static final String KEYBINDS_2 =
-			"G exit   Y re-anchor   H duplicate layer   U align   O overlay   /qc undo reverts the last apply";
+			"G exit   Y re-anchor   H duplicate layer   U align   O overlay   /qc undo | redo the last apply";
 	private static final int TOOL_COLOR = 0x9FE0FF;
 	private static final int WARN_COLOR = 0xFF8080;
 	private static final int LINE_COLOR = 0xFFFFFF;

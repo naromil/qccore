@@ -27,7 +27,8 @@ import java.util.Set;
 
 /**
  * The planning pipeline in a real world: a plan with a full unit, a framework-only unit, a cleared
- * cell and a road is applied in one step, and the world undo puts every block and record back.
+ * cell and a road is applied in one step, the world undo puts every block and record back, and the
+ * world redo re-applies it.
  */
 public class QcPlanGameTests implements FabricGameTest {
 
@@ -110,6 +111,54 @@ public class QcPlanGameTests implements FabricGameTest {
         Map<BlockPos, ?> after = QcUnitIndex.get(world).units(dimension);
         if (after.containsKey(full) || after.containsKey(frameOnly)) {
             throw new AssertionError("undo left the unit records behind");
+        }
+
+        // redo puts the apply back, and undoing again restores the world once more
+        if (QcUndoService.redoDepth(player) != 1) {
+            throw new AssertionError("expected one redo step, found " + QcUndoService.redoDepth(player));
+        }
+        QcResult redo = QcUndoService.redo(player);
+        if (!redo.ok()) {
+            throw new AssertionError("redo was refused: " + redo.message());
+        }
+        expect(world, full, Blocks.POLISHED_DEEPSLATE, "framework of the full unit after redo");
+        expect(world, roadFloor, Blocks.POLISHED_ANDESITE, "road axis lane after redo");
+        if (!world.getBlockState(rock).isAir()) {
+            throw new AssertionError("redo did not clear the terrain at " + rock.toShortString());
+        }
+        Map<BlockPos, ?> redone = QcUnitIndex.get(world).units(dimension);
+        if (!redone.containsKey(full) || !redone.containsKey(frameOnly)) {
+            throw new AssertionError("redo did not register the units again");
+        }
+        if (QcUndoService.depth(player) != 1 || QcUndoService.redoDepth(player) != 0) {
+            throw new AssertionError("after redo expected 1 undo / 0 redo, found " + QcUndoService.depth(player)
+                    + " / " + QcUndoService.redoDepth(player));
+        }
+        QcResult again = QcUndoService.undo(player);
+        if (!again.ok()) {
+            throw new AssertionError("second undo was refused: " + again.message());
+        }
+        expect(world, rock, Blocks.STONE, "terrain restored by the second undo");
+        for (Map.Entry<BlockPos, BlockState> entry : before.entrySet()) {
+            if (!world.getBlockState(entry.getKey()).equals(entry.getValue())) {
+                throw new AssertionError("the second undo left " + world.getBlockState(entry.getKey()) + " at "
+                        + entry.getKey().toShortString() + " instead of " + entry.getValue());
+            }
+        }
+
+        // a fresh apply drops what could be redone
+        QcPlan small = new QcPlan();
+        small.addUnit(new Cell(0, 1, 0), ComponentMask.FRAMEWORK);
+        QcResult reapply = QcPlanService.apply(player, anchor, small, palette);
+        if (!reapply.ok()) {
+            throw new AssertionError("the second apply was refused: " + reapply.message());
+        }
+        if (QcUndoService.redoDepth(player) != 0) {
+            throw new AssertionError("a new apply kept " + QcUndoService.redoDepth(player) + " redo step(s)");
+        }
+        assertRefused(QcUndoService.redo(player), "nothing to redo");
+        if (!QcUndoService.undo(player).ok()) {
+            throw new AssertionError("could not undo the second apply");
         }
         world.setBlockState(rock, Blocks.AIR.getDefaultState());
         world.setBlockState(roadFloor, Blocks.AIR.getDefaultState());
