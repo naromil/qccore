@@ -15,7 +15,6 @@ import java.nio.file.Path;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.ContainerObjectSelectionList;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.narration.NarratableEntry;
@@ -33,18 +32,15 @@ public class QcFileBrowserScreen extends Screen {
 		LOAD_LAYOUT
 	}
 
-	private static final int LIST_TOP = 32;
+	private static final int LIST_TOP = 34;
+	private static final int LIST_HALF_WIDTH = 140;
 	private static final int LIST_BOTTOM_OFFSET = -56;
 	private static final int ITEM_HEIGHT = 20;
 	private static final int TEXT_Y_OFFSET = 5;
-	private static final int SIZE_X_OFFSET = -60;
 	private static final int DIRECTORY_Y_OFFSET = -50;
-	private static final int ERROR_Y_OFFSET = -38;
+	private static final int ERROR_Y_OFFSET = -40;
 	private static final int BUTTON_Y_OFFSET = -24;
 	private static final int BUTTON_WIDTH = 100;
-	private static final int TEXT_COLOR = 0xFFFFFF;
-	private static final int MUTED_COLOR = 0x808080;
-	private static final int ERROR_COLOR = 0xFF5555;
 
 	private final Screen parent;
 	private final Mode mode;
@@ -65,23 +61,47 @@ public class QcFileBrowserScreen extends Screen {
 		this.directory = QcSchematics.dir().toAbsolutePath().toString();
 		this.list = new FileList(this.minecraft, this.width, this.height, LIST_TOP,
 				this.height + LIST_BOTTOM_OFFSET, ITEM_HEIGHT);
+		this.list.setRenderBackground(false);
+		this.list.setRenderTopAndBottom(false);
 		this.list.populate(QcSchematics.list());
 		this.addRenderableWidget(this.list);
-		this.addRenderableWidget(Button.builder(Component.literal("Select"), button -> select())
-				.bounds(this.width / 2 - 105, this.height + BUTTON_Y_OFFSET, BUTTON_WIDTH, 20).build());
-		this.addRenderableWidget(Button.builder(Component.literal("Cancel"), button -> this.minecraft.setScreen(this.parent))
-				.bounds(this.width / 2 + 5, this.height + BUTTON_Y_OFFSET, BUTTON_WIDTH, 20).build());
+		this.addRenderableWidget(new QcUi.Chip(this.width / 2 - 105, this.height + BUTTON_Y_OFFSET, BUTTON_WIDTH, 18,
+				"Cancel", () -> this.minecraft.setScreen(this.parent)).tip("Esc"));
+		this.addRenderableWidget(new QcUi.Chip(this.width / 2 + 5, this.height + BUTTON_Y_OFFSET, BUTTON_WIDTH, 18,
+				"Select", this::select).accent(QcUi.APPLY).primary().tip("Use the selected file (Enter, or double-click a row)"));
 	}
 
 	@Override
 	public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
 		this.renderBackground(context);
-		context.drawCenteredString(this.font, this.title, this.width / 2, 6, 0xFFFFFF);
-		context.drawString(this.font, this.directory, 8, this.height + DIRECTORY_Y_OFFSET, MUTED_COLOR);
-		if (!this.error.isEmpty()) {
-			context.drawString(this.font, this.error, 8, this.height + ERROR_Y_OFFSET, ERROR_COLOR);
-		}
+		int x = this.width / 2 - LIST_HALF_WIDTH - 6;
+		int bottom = this.height + LIST_BOTTOM_OFFSET;
+		QcUi.panel(context, this.font, x, LIST_TOP - QcUi.HEADER_HEIGHT - 2, 2 * LIST_HALF_WIDTH + 12,
+				bottom - LIST_TOP + QcUi.HEADER_HEIGHT + 4, purpose(), this.mode == Mode.LOAD_LAYOUT ? QcUi.ACCENT : QcUi.WARN);
 		super.render(context, mouseX, mouseY, delta);
+		QcUi.titleBar(context, this.font, this, null);
+		context.drawCenteredString(this.font, this.font.plainSubstrByWidth(this.directory, this.width - 16),
+				this.width / 2, this.height + DIRECTORY_Y_OFFSET, 0xFF4A5260);
+		if (!this.error.isEmpty()) {
+			QcUi.status(context, this.font, this.error, QcUi.ERROR, this.width / 2, this.height + ERROR_Y_OFFSET);
+		}
+	}
+
+	@Override
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER) {
+			select();
+			return true;
+		}
+		return super.keyPressed(keyCode, scanCode, modifiers);
+	}
+
+	private String purpose() {
+		if (this.mode == Mode.LOAD_LAYOUT) {
+			return "Load a QC layout";
+		}
+		ComponentText text = describe(this.component);
+		return "Structure for the " + text.label() + " · " + text.rule();
 	}
 
 	private void select() {
@@ -164,6 +184,16 @@ public class QcFileBrowserScreen extends Screen {
 		}
 
 		@Override
+		public int getRowWidth() {
+			return 2 * LIST_HALF_WIDTH;
+		}
+
+		@Override
+		protected int getScrollbarPosition() {
+			return QcFileBrowserScreen.this.width / 2 + LIST_HALF_WIDTH + 2;
+		}
+
+		@Override
 		protected boolean isSelectedItem(int index) {
 			FileEntry selected = this.getSelected();
 			return selected != null && this.children().indexOf(selected) == index;
@@ -173,6 +203,7 @@ public class QcFileBrowserScreen extends Screen {
 	private class FileEntry extends ContainerObjectSelectionList.Entry<FileEntry> {
 		private final @Nullable Path file;
 		private final long size;
+		private long lastClick;
 
 		FileEntry(@Nullable Path file) {
 			this.file = file;
@@ -182,16 +213,18 @@ public class QcFileBrowserScreen extends Screen {
 		@Override
 		public void render(GuiGraphics context, int index, int y, int x, int entryWidth, int entryHeight,
 				int mouseX, int mouseY, boolean hovered, float tickDelta) {
+			net.minecraft.client.gui.Font font = QcFileBrowserScreen.this.font;
 			if (this.file == null) {
-				context.drawString(QcFileBrowserScreen.this.font,
-						"no .nbt files in " + QcFileBrowserScreen.this.directory,
-						x + 2, y + TEXT_Y_OFFSET, MUTED_COLOR);
+				context.drawString(font, "no .nbt files yet - put them in the folder below", x + 4, y + TEXT_Y_OFFSET, QcUi.DIM, false);
 				return;
 			}
-			context.drawString(QcFileBrowserScreen.this.font,
-					this.file.getFileName().toString(), x + 2, y + TEXT_Y_OFFSET, TEXT_COLOR);
-			context.drawString(QcFileBrowserScreen.this.font,
-					this.size + " bytes", x + entryWidth + SIZE_X_OFFSET, y + TEXT_Y_OFFSET, MUTED_COLOR);
+			if (hovered) {
+				context.fill(x - 2, y - 2, x + entryWidth - 2, y + entryHeight + 1, 0x302C3644);
+			}
+			context.renderItem(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.STRUCTURE_BLOCK), x, y);
+			context.drawString(font, this.file.getFileName().toString(), x + 20, y + TEXT_Y_OFFSET, QcUi.TEXT, false);
+			String size = this.size < 1024 ? this.size + " B" : String.format(java.util.Locale.ROOT, "%.1f KB", this.size / 1024.0);
+			context.drawString(font, size, x + entryWidth - 6 - font.width(size), y + TEXT_Y_OFFSET, QcUi.DIM, false);
 		}
 
 		@Override
@@ -200,7 +233,13 @@ public class QcFileBrowserScreen extends Screen {
 				return false;
 			}
 			FileList owner = QcFileBrowserScreen.this.list;
+			long now = System.currentTimeMillis();
+			boolean again = owner.getSelected() == this && now - this.lastClick < 350;
+			this.lastClick = now;
 			owner.setSelected(this);
+			if (again) {
+				QcFileBrowserScreen.this.select();
+			}
 			return true;
 		}
 

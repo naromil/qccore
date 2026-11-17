@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -18,20 +17,23 @@ import net.minecraft.network.chat.Component;
  * {@code road_style}: lane 1 at the building face, lane 4 on the axis.
  */
 public class QcKitScreen extends Screen {
-	private static final int TEXT_COLOR = 0xFFFFFF;
-	private static final int LABEL_COLOR = 0xA0A0A0;
-	private static final int MUTED_COLOR = 0x808080;
-	private static final int ERROR_COLOR = 0xFF5555;
-	private static final int VALID_COLOR = 0x55FF55;
 	private static final int LANE_WIDTH = 82;
-	private static final int LABEL_WIDTH = 66;
-	private static final int FIELDS_TOP = 80;
+	private static final int LABEL_WIDTH = 70;
+	private static final int FIELDS_TOP = 116;
+	private static final int FIELD_STEP = 18;
+	private static final int FIELD_HEIGHT = 16;
+	private static final String[] ROW_TIPS = {
+			"floor: the road surface per lane (required in every lane)",
+			"joint: replaces the floor every 8 blocks (optional)",
+			"over: one block above the floor, y1 (optional)",
+			"post: comma-separated ids stacked a, b, ... at the joints (optional)",
+			"medallion / centre: the plaza medallion and the centre block (optional)"};
 
 	private final Screen parent;
 	private List<String> kits = List.of();
 	private int kit;
-	private Button kitButton;
-	private Button styleButton;
+	private QcUi.Chip kitButton;
+	private QcUi.Chip styleButton;
 	private EditBox kitName;
 	private EditBox styleName;
 	private final EditBox[] floor = new EditBox[RoadStyle.LANES];
@@ -57,47 +59,53 @@ public class QcKitScreen extends Screen {
 	protected void init() {
 		this.kits = QcKits.list();
 		int x = this.width / 2 - 205;
-		int y = 18;
-		this.addRenderableWidget(Button.builder(Component.literal("<"), b -> stepKit(-1)).bounds(x, y, 16, 20).build());
-		this.kitButton = this.addRenderableWidget(Button.builder(Component.empty(), b -> stepKit(1)).bounds(x + 18, y, 118, 20).build());
-		this.addRenderableWidget(Button.builder(Component.literal(">"), b -> stepKit(1)).bounds(x + 138, y, 16, 20).build());
-		this.addRenderableWidget(Button.builder(Component.literal("Load kit"), b -> loadKit()).bounds(x + 158, y, 74, 20).build());
-		this.kitName = new EditBox(this.font, x + 240, y, 92, 20, Component.literal("kit"));
+		int y = 22 + QcUi.HEADER_HEIGHT + 4;
+		this.addRenderableWidget(new QcUi.Chip(x + 4, y, 16, 18, "‹", () -> stepKit(-1)).tip("Previous kit"));
+		this.kitButton = this.addRenderableWidget(new QcUi.Chip(x + 22, y, 130, 18, "", () -> stepKit(1)).tip("Next kit"));
+		this.addRenderableWidget(new QcUi.Chip(x + 154, y, 16, 18, "›", () -> stepKit(1)).tip("Next kit"));
+		this.addRenderableWidget(new QcUi.Chip(x + 174, y, 64, 18, "Load", this::loadKit)
+				.tip("Load the kit: palette ids, structures, road styles and ground"));
+		this.kitName = new EditBox(this.font, x + 246, y + 1, 92, FIELD_HEIGHT, Component.literal("kit"));
 		this.kitName.setMaxLength(64);
 		this.kitName.setValue(this.kits.isEmpty() ? "my_kit" : this.kits.get(0));
+		this.kitName.setTooltip(QcUi.tip("Name to save the kit under"));
 		this.addRenderableWidget(this.kitName);
-		this.addRenderableWidget(Button.builder(Component.literal("Save kit"), b -> saveKit()).bounds(x + 336, y, 74, 20).build());
+		this.addRenderableWidget(new QcUi.Chip(x + 342, y, 64, 18, "Save", this::saveKit).accent(QcUi.APPLY)
+				.tip("Save the current palette, road styles and ground as a kit"));
 
-		y += 24;
-		this.addRenderableWidget(Button.builder(Component.literal("<"), b -> stepStyle(-1)).bounds(x, y, 16, 20).build());
-		this.styleButton = this.addRenderableWidget(Button.builder(Component.empty(), b -> stepStyle(1)).bounds(x + 18, y, 118, 20).build());
-		this.addRenderableWidget(Button.builder(Component.literal(">"), b -> stepStyle(1)).bounds(x + 138, y, 16, 20).build());
-		this.styleName = new EditBox(this.font, x + 240, y, 92, 20, Component.literal("style"));
+		y = 66 + QcUi.HEADER_HEIGHT + 4;
+		this.addRenderableWidget(new QcUi.Chip(x + 4, y, 16, 18, "‹", () -> stepStyle(-1)).tip("Previous style"));
+		this.styleButton = this.addRenderableWidget(new QcUi.Chip(x + 22, y, 130, 18, "", () -> stepStyle(1))
+				.accent(QcUi.color(QcTool.ROAD)).tip("Next style"));
+		this.addRenderableWidget(new QcUi.Chip(x + 154, y, 16, 18, "›", () -> stepStyle(1)).tip("Next style"));
+		this.styleName = new EditBox(this.font, x + 246, y + 1, 92, FIELD_HEIGHT, Component.literal("style"));
 		this.styleName.setMaxLength(32);
 		this.styleName.setValue("street");
+		this.styleName.setTooltip(QcUi.tip("Name of a new road style"));
 		this.addRenderableWidget(this.styleName);
-		this.addRenderableWidget(Button.builder(Component.literal("New style"), b -> newStyle()).bounds(x + 336, y, 74, 20).build());
+		this.addRenderableWidget(new QcUi.Chip(x + 342, y, 64, 18, "New", this::newStyle).tip("Create a road style with this name"));
 		y = FIELDS_TOP;
 		int lanes = x + LABEL_WIDTH;
 		for (int i = 0; i < RoadStyle.LANES; i++) {
-			int laneX = lanes + i * (LANE_WIDTH + 4);
-			this.floor[i] = lane(laneX, y);
-			this.joint[i] = lane(laneX, y + 22);
-			this.over[i] = lane(laneX, y + 44);
-			this.post[i] = lane(laneX, y + 66);
+			int laneX = lanes + i * (LANE_WIDTH + 2);
+			this.floor[i] = lane(laneX, y, ROW_TIPS[0]);
+			this.joint[i] = lane(laneX, y + FIELD_STEP, ROW_TIPS[1]);
+			this.over[i] = lane(laneX, y + 2 * FIELD_STEP, ROW_TIPS[2]);
+			this.post[i] = lane(laneX, y + 3 * FIELD_STEP, ROW_TIPS[3]);
 		}
-		this.medallion = lane(lanes, y + 88);
-		this.medallion.setWidth(2 * LANE_WIDTH + 4);
-		this.centre = lane(lanes + 2 * (LANE_WIDTH + 4), y + 88);
-		this.centre.setWidth(2 * LANE_WIDTH + 4);
+		this.medallion = lane(lanes, y + 4 * FIELD_STEP, "medallion: the plaza medallion block (optional)");
+		this.medallion.setWidth(2 * LANE_WIDTH + 2);
+		this.centre = lane(lanes + 2 * (LANE_WIDTH + 2), y + 4 * FIELD_STEP, "centre: the centre block (optional)");
+		this.centre.setWidth(2 * LANE_WIDTH + 2);
 
-		int bottom = this.height - 24;
-		this.addRenderableWidget(Button.builder(Component.literal("Lay this style with the road tool"), b -> useStyle())
-				.bounds(x, bottom, 300, 20).build());
-		this.addRenderableWidget(Button.builder(Component.literal("Done"), b -> {
+		int bottom = this.height - 22;
+		this.addRenderableWidget(new QcUi.Chip(x, bottom, 200, 18, "Lay this style with the road tool", this::useStyle)
+				.icon(() -> new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIRT_PATH), false)
+				.accent(QcUi.color(QcTool.ROAD)).tip("Switch to the road tool with this style"));
+		this.addRenderableWidget(new QcUi.Chip(x + 310, bottom, 100, 18, "Done", () -> {
 			storeStyle();
 			this.minecraft.setScreen(this.parent);
-		}).bounds(x + 310, bottom, 100, 20).build());
+		}).tip("Back (Esc keeps the edits too)"));
 		refreshKit();
 		loadStyleFields();
 	}
@@ -105,13 +113,19 @@ public class QcKitScreen extends Screen {
 	@Override
 	public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
 		this.renderBackground(context);
-		context.drawCenteredString(this.font, this.title, this.width / 2, 6, TEXT_COLOR);
+		QcUi.titleBar(context, this.font, this, null);
 		int x = this.width / 2 - 205;
-		context.drawString(this.font, "lane 1 = at a building face ... lane 4 = on the axis;  joint = every 8 blocks",
-				x, FIELDS_TOP - 11, MUTED_COLOR);
-		String[] labels = {"floor *", "joint", "over (y1)", "post a,b,..", "medal./ctr."};
+		QcUi.panel(context, this.font, x, 22, 410, 40, "Kit", QcUi.ACCENT);
+		int styleBottom = FIELDS_TOP + 5 * FIELD_STEP + 2;
+		QcUi.panel(context, this.font, x, 66, 410, styleBottom - 66, "Road style", QcUi.color(QcTool.ROAD));
+		int lanes = x + LABEL_WIDTH;
+		String[] laneNames = {"lane 1 · face", "lane 2", "lane 3", "lane 4 · axis"};
+		for (int i = 0; i < RoadStyle.LANES; i++) {
+			context.drawString(this.font, laneNames[i], lanes + i * (LANE_WIDTH + 2) + 2, FIELDS_TOP - 10, QcUi.DIM, false);
+		}
+		String[] labels = {"floor *", "joint", "over (y1)", "post a,b,…", "medal. / ctr."};
 		for (int i = 0; i < labels.length; i++) {
-			context.drawString(this.font, labels[i], x, FIELDS_TOP + 6 + i * 22, LABEL_COLOR);
+			context.drawString(this.font, labels[i], x + 6, FIELDS_TOP + 4 + i * FIELD_STEP, i == 0 ? QcUi.TEXT : QcUi.MUTED, false);
 		}
 		for (EditBox[] row : new EditBox[][]{this.floor, this.joint, this.over}) {
 			for (EditBox field : row) {
@@ -121,21 +135,21 @@ public class QcKitScreen extends Screen {
 		colour(this.medallion);
 		colour(this.centre);
 		if (!this.footer.isEmpty()) {
-			context.drawCenteredString(this.font, this.footer, this.width / 2, this.height - 36,
-					this.footerError ? ERROR_COLOR : TEXT_COLOR);
+			QcUi.status(context, this.font, this.footer, this.footerError ? QcUi.ERROR : QcUi.OK, this.width / 2, this.height - 40);
 		}
 		super.render(context, mouseX, mouseY, delta);
 	}
 
-	private EditBox lane(int x, int y) {
-		EditBox field = new EditBox(this.font, x, y, LANE_WIDTH, 20, Component.empty());
+	private EditBox lane(int x, int y, String tip) {
+		EditBox field = new EditBox(this.font, x, y, LANE_WIDTH, FIELD_HEIGHT, Component.empty());
 		field.setMaxLength(160);
+		field.setTooltip(QcUi.tip(tip));
 		return this.addRenderableWidget(field);
 	}
 
 	private static void colour(EditBox field) {
 		String text = field.getValue();
-		field.setTextColor(text.isBlank() ? TEXT_COLOR : BlockIds.parse(text) != null ? VALID_COLOR : ERROR_COLOR);
+		field.setTextColor(text.isBlank() ? QcUi.TEXT : BlockIds.parse(text) != null ? QcUi.OK : QcUi.ERROR);
 	}
 
 	private void stepKit(int delta) {

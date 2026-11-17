@@ -6,7 +6,6 @@ import com.qccore.world.QcPlanService;
 import com.qccore.core.nbt.StructureNbt;
 import java.nio.file.Path;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
@@ -22,17 +21,9 @@ import net.minecraft.network.chat.Component;
  */
 public class QcSaveScreen extends Screen {
 	private static final int CLOSE_DELAY_TICKS = 40;
-	private static final int NAME_X_OFFSET = -100;
-	private static final int NAME_WIDTH = 200;
-	private static final int NAME_Y = 60;
-	private static final int DIRECTORY_Y = 34;
-	private static final int FILE_Y = 44;
-	private static final int FOOTER_Y = 112;
-	private static final int BUTTON_Y_OFFSET = -32;
-	private static final int BUTTON_WIDTH = 100;
-	private static final int MUTED_COLOR = 0x808080;
-	private static final int FOOTER_COLOR = 0xFFFFFF;
-	private static final int FOOTER_ERROR_COLOR = 0xFF5555;
+	private static final int PANEL_WIDTH = 240;
+	private static final int PANEL_TOP = 26;
+	private static final int PANEL_HEIGHT = 112;
 
 	private EditBox nameField;
 	private String name = "qc_layout";
@@ -49,36 +40,55 @@ public class QcSaveScreen extends Screen {
 	@Override
 	protected void init() {
 		this.directory = QcSchematics.dir().toAbsolutePath().toString();
-		this.nameField = new EditBox(this.font, this.width / 2 + NAME_X_OFFSET, NAME_Y,
-				NAME_WIDTH, 20, Component.literal("name"));
+		int x = this.width / 2 - PANEL_WIDTH / 2;
+		this.nameField = new EditBox(this.font, x + 6, PANEL_TOP + QcUi.HEADER_HEIGHT + 16, PANEL_WIDTH - 12, 18,
+				Component.literal("name"));
 		this.nameField.setMaxLength(128);
 		this.nameField.setResponder(text -> this.name = text);
 		this.nameField.setValue(this.name);
 		this.addRenderableWidget(this.nameField);
-		this.addRenderableWidget(Button.builder(airLabel(), button -> {
-			this.includeAir = !this.includeAir;
-			button.setMessage(airLabel());
-		}).bounds(this.width / 2 + NAME_X_OFFSET, NAME_Y + 24, NAME_WIDTH, 20).build());
-		this.addRenderableWidget(Button.builder(Component.literal("Save"), button -> save())
-				.bounds(this.width / 2 - 105, this.height + BUTTON_Y_OFFSET, BUTTON_WIDTH, 20).build());
-		this.addRenderableWidget(Button.builder(Component.literal("Cancel"), button -> onClose())
-				.bounds(this.width / 2 + 5, this.height + BUTTON_Y_OFFSET, BUTTON_WIDTH, 20).build());
+		int half = (PANEL_WIDTH - 14) / 2;
+		int y = PANEL_TOP + QcUi.HEADER_HEIGHT + 52;
+		this.addRenderableWidget(new QcUi.Chip(x + 6, y, half, 16, "Sparse", () -> this.includeAir = false)
+				.selected(() -> !this.includeAir)
+				.tip("Leave cleared terrain out: only the building's blocks (what Create's schematicannon wants)"));
+		this.addRenderableWidget(new QcUi.Chip(x + 8 + half, y, half, 16, "With clearing", () -> this.includeAir = true)
+				.selected(() -> this.includeAir)
+				.tip("Also write the cleared terrain and road headroom as air, so a paste carves the site"));
+		int bottom = PANEL_TOP + PANEL_HEIGHT + 6;
+		this.addRenderableWidget(new QcUi.Chip(x, bottom, PANEL_WIDTH / 2 - 2, 18, "Cancel", this::onClose).tip("Esc"));
+		this.addRenderableWidget(new QcUi.Chip(x + PANEL_WIDTH / 2 + 2, bottom, PANEL_WIDTH / 2 - 2, 18, "Save .nbt", this::save)
+				.accent(QcUi.APPLY).primary().tip("Write the file (Enter)"));
 		this.setInitialFocus(this.nameField);
 	}
 
 	@Override
 	public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
 		this.renderBackground(context);
-		context.drawCenteredString(this.font, this.title, this.width / 2, 6, 0xFFFFFF);
-		context.drawString(this.font, this.directory,
-				this.width / 2 + NAME_X_OFFSET, DIRECTORY_Y, MUTED_COLOR);
-		context.drawString(this.font, QcSchematics.normaliseName(this.name) + ".nbt",
-				this.width / 2 + NAME_X_OFFSET, FILE_Y, MUTED_COLOR);
+		QcUi.titleBar(context, this.font, this, null);
+		int x = this.width / 2 - PANEL_WIDTH / 2;
+		QcUi.panel(context, this.font, x, PANEL_TOP, PANEL_WIDTH, PANEL_HEIGHT, "File", QcUi.ACCENT);
+		context.drawString(this.font, "name", x + 6, PANEL_TOP + QcUi.HEADER_HEIGHT + 5, QcUi.MUTED, false);
+		context.drawString(this.font, "→ " + QcSchematics.normaliseName(this.name) + ".nbt",
+				x + 6, PANEL_TOP + QcUi.HEADER_HEIGHT + 38, QcUi.DIM, false);
+		context.drawString(this.font, "plan: " + QcUi.planSummary(), x + 6,
+				PANEL_TOP + QcUi.HEADER_HEIGHT + 74, QcUi.MUTED, false);
+		context.drawString(this.font, this.font.plainSubstrByWidth(this.directory, PANEL_WIDTH - 12), x + 6,
+				PANEL_TOP + QcUi.HEADER_HEIGHT + 86, 0xFF4A5260, false);
 		if (!this.footer.isEmpty()) {
-			context.drawCenteredString(this.font, this.footer, this.width / 2, FOOTER_Y,
-					this.footerError ? FOOTER_ERROR_COLOR : FOOTER_COLOR);
+			QcUi.status(context, this.font, this.footer, this.footerError ? QcUi.ERROR : QcUi.OK, this.width / 2,
+					PANEL_TOP + PANEL_HEIGHT + 30);
 		}
 		super.render(context, mouseX, mouseY, delta);
+	}
+
+	@Override
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER) {
+			save();
+			return true;
+		}
+		return super.keyPressed(keyCode, scanCode, modifiers);
 	}
 
 	@Override
@@ -86,10 +96,6 @@ public class QcSaveScreen extends Screen {
 		if (this.closeTicks > 0 && --this.closeTicks == 0) {
 			onClose();
 		}
-	}
-
-	private Component airLabel() {
-		return Component.literal(this.includeAir ? "clearing: written as air" : "clearing: left out (sparse file)");
 	}
 
 	private void save() {

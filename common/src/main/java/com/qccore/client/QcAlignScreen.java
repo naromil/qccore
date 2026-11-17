@@ -6,7 +6,6 @@ import com.qccore.net.QcPackets.QcAlignC2S;
 import com.qccore.world.QcUnitRecord;
 import com.qccore.platform.QcPlatform;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
@@ -14,18 +13,11 @@ import net.minecraft.network.chat.Component;
 
 /** Re-aligns one placed QC Unit, and with it the whole building, to {@code (8x + a, 8y + b, 8z + c)}. */
 public class QcAlignScreen extends Screen {
-	private static final int FIELD_Y = 60;
 	private static final int FIELD_WIDTH = 18;
-	private static final int FIELD_HEIGHT = 18;
-	private static final int FIELD_A_X = -60;
-	private static final int FIELD_B_X = -20;
-	private static final int FIELD_C_X = 20;
-	private static final int LABEL_Y = FIELD_Y + 5;
-	private static final int TARGET_Y = 34;
-	private static final int RESIDUE_Y = 44;
-	private static final int BUTTON_Y_OFFSET = -32;
-	private static final int BUTTON_WIDTH = 100;
-	private static final int MUTED_COLOR = 0x808080;
+	private static final int FIELD_HEIGHT = 16;
+	private static final int PANEL_WIDTH = 240;
+	private static final int PANEL_TOP = 26;
+	private static final int PANEL_HEIGHT = 92;
 
 	private final QcUnitRecord target;
 	private EditBox fieldA;
@@ -39,40 +31,54 @@ public class QcAlignScreen extends Screen {
 
 	@Override
 	protected void init() {
-		this.fieldA = residueField(this.width / 2 + FIELD_A_X, "a");
-		this.fieldB = residueField(this.width / 2 + FIELD_B_X, "b");
-		this.fieldC = residueField(this.width / 2 + FIELD_C_X, "c");
-		this.addRenderableWidget(Button.builder(Component.literal("Apply"), button -> apply())
-				.bounds(this.width / 2 - 105, this.height + BUTTON_Y_OFFSET, BUTTON_WIDTH, 20).build());
-		this.addRenderableWidget(Button.builder(Component.literal("Cancel"), button -> onClose())
-				.bounds(this.width / 2 + 5, this.height + BUTTON_Y_OFFSET, BUTTON_WIDTH, 20).build());
+		int x = this.width / 2 - PANEL_WIDTH / 2;
+		int y = PANEL_TOP + QcUi.HEADER_HEIGHT + 40;
+		BlockPos residues = Alignment.residues(this.target.origin());
+		this.fieldA = residueField(x + 40, y, "a", residues.getX(), "x = 8·n + a");
+		this.fieldB = residueField(x + 110, y, "b", residues.getY(), "y = 8·n + b");
+		this.fieldC = residueField(x + 180, y, "c", residues.getZ(), "z = 8·n + c");
+		int bottom = PANEL_TOP + PANEL_HEIGHT + 6;
+		this.addRenderableWidget(new QcUi.Chip(x, bottom, PANEL_WIDTH / 2 - 2, 18, "Cancel", this::onClose).tip("Esc"));
+		this.addRenderableWidget(new QcUi.Chip(x + PANEL_WIDTH / 2 + 2, bottom, PANEL_WIDTH / 2 - 2, 18, "Align building", this::apply)
+				.accent(QcUi.APPLY).primary().tip("Move the whole connected building onto the new lattice (Enter); creative only"));
 		this.setInitialFocus(this.fieldA);
 	}
 
 	@Override
 	public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
 		this.renderBackground(context);
-		context.drawCenteredString(this.font, this.title, this.width / 2, 6, 0xFFFFFF);
+		QcUi.titleBar(context, this.font, this, null);
+		int x = this.width / 2 - PANEL_WIDTH / 2;
+		QcUi.panel(context, this.font, x, PANEL_TOP, PANEL_WIDTH, PANEL_HEIGHT, "Target unit", QcUi.ACCENT);
 		BlockPos origin = this.target.origin();
-		context.drawCenteredString(this.font,
-				"unit at " + origin.getX() + " " + origin.getY() + " " + origin.getZ(), this.width / 2,
-				TARGET_Y, MUTED_COLOR);
 		BlockPos residues = Alignment.residues(origin);
-		context.drawCenteredString(this.font,
-				"currently 8x+" + residues.getX() + ", 8y+" + residues.getY() + ", 8z+" + residues.getZ(),
-				this.width / 2, RESIDUE_Y, MUTED_COLOR);
-		int left = this.width / 2 + FIELD_A_X - 12;
-		context.drawString(this.font, "a", left, LABEL_Y, MUTED_COLOR);
-		context.drawString(this.font, "b", left + 40, LABEL_Y, MUTED_COLOR);
-		context.drawString(this.font, "c", left + 80, LABEL_Y, MUTED_COLOR);
+		context.drawString(this.font, "origin  " + origin.getX() + " " + origin.getY() + " " + origin.getZ(),
+				x + 6, PANEL_TOP + QcUi.HEADER_HEIGHT + 5, QcUi.TEXT, false);
+		context.drawString(this.font, "now     8x+" + residues.getX() + ", 8y+" + residues.getY() + ", 8z+" + residues.getZ(),
+				x + 6, PANEL_TOP + QcUi.HEADER_HEIGHT + 17, QcUi.MUTED, false);
+		int y = PANEL_TOP + QcUi.HEADER_HEIGHT + 45;
+		context.drawString(this.font, "8x +", x + 14, y, QcUi.MUTED, false);
+		context.drawString(this.font, "8y +", x + 84, y, QcUi.MUTED, false);
+		context.drawString(this.font, "8z +", x + 154, y, QcUi.MUTED, false);
+		context.drawString(this.font, "0-7 each; the nearest shift per axis is used", x + 6, y + 20, QcUi.DIM, false);
 		super.render(context, mouseX, mouseY, delta);
 	}
 
-	private EditBox residueField(int x, String label) {
-		EditBox field = new EditBox(this.font, x, FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT,
-				Component.literal(label));
+	@Override
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER) {
+			apply();
+			return true;
+		}
+		return super.keyPressed(keyCode, scanCode, modifiers);
+	}
+
+	private EditBox residueField(int x, int y, String label, int current, String tip) {
+		EditBox field = new EditBox(this.font, x, y, FIELD_WIDTH, FIELD_HEIGHT, Component.literal(label));
 		field.setMaxLength(1);
 		field.setFilter(text -> text.matches("[0-7]?"));
+		field.setValue(Integer.toString(current));
+		field.setTooltip(QcUi.tip(tip + "\nstarts at the current residue; empty = 0"));
 		this.addRenderableWidget(field);
 		return field;
 	}

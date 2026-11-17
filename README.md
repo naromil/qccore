@@ -11,7 +11,10 @@ or **export** it as a vanilla structure `.nbt`.
 
 1. Press **G** to enter the editor: the lattice is anchored at your feet (layer 1 = your cell), or
    on the lattice of a nearby QC building. **Y** re-anchors at the crosshair.
-2. Pick a **tool** (**N** cycles, or **B** for the tools screen) and a **shape** (**V** cycles):
+2. Pick a **tool** (**N** cycles, or **B** for the tools screen, where **1-9** pick a tool directly) and a
+   **shape** (**V** cycles). The HUD panel in the top-left corner shows the tool, shape progress, plan and
+   cursor; **hold Left Alt** to see every control with your current key bindings. Every control in the
+   screens has a tooltip; number fields are steppers (click the arrows or scroll, Shift steps by 8).
 
    | Tool | Right click over the shape |
    |---|---|
@@ -47,9 +50,9 @@ or **export** it as a vanilla structure `.nbt`.
 7. **M** toggles the ghost-block preview, **O** the wireframes, **I** opens the nine components and
    the lattice, **U** re-aligns a placed building.
 
-**Templates** (tools screen → Templates…) save the whole plan — units, flags, component masks, roads,
+**Templates** (tools screen → Templates; double-click a template to use it) save the whole plan — units, flags, component masks, roads,
 cleared cells and the palette — to `<gameDir>/qccore/templates/<name>.qct.nbt`; pick one to stamp it with
-the template tool. **Kits** (tools screen → Kits & roads…) are the in-game counterpart of qckit's per-build
+the template tool. **Kits** (tools screen → Kits/roads) are the in-game counterpart of qckit's per-build
 block choices: the palette, the road styles and the ground block as editable JSON in
 `<gameDir>/qccore/kits/<name>.json`. As in qckit there are no preset road styles: choose the blocks of each
 lane (block states allowed, e.g. `oak_log[axis=x]`) and save them as a kit.

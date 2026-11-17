@@ -18,7 +18,9 @@ types is the third source. Read all three before changing behaviour.
 
 - **Purpose:** replace the QCSimple JavaFX canvas with crosshair editing. There is no 2D editor screen; the GUI is
   the IO/config screens (`QcConfigScreen`, `QcFileBrowserScreen`, `QcSaveScreen`, `QcAlignScreen`) plus the planning
-  screens (`QcToolsScreen` hub on B, `QcTemplateScreen`, `QcKitScreen`).
+  screens (`QcToolsScreen` hub on B, `QcTemplateScreen`, `QcKitScreen`). All of them and `QcHud` share the flat
+  dark look of `client/QcUi` (panels, `Chip` buttons with a live selected state, `Stepper` number widgets,
+  status pill, tool colours/icons); the tools screen lays out all choices at once and must fit a 427x240 GUI.
 - **Plan model (`core/plan/`):** `QcPlan` = units (`UnitLayers`) + per-unit `ComponentMask` (absent = all nine) +
   cleared cells (`clearMargin` 0..4, optional `ground` fill of the floor plane) + road cells naming a `RoadStyle`
   (lanes 1..4, joint, over, post, medallion, centre; ids may carry states, parsed by `BlockIds`). `BuildShape`
@@ -319,6 +321,8 @@ Paths are relative to `common/src/main/java/com/qccore/`, except where a project
 | `core/palette/BlockPalette.java` | the nine components in the exported order, `isConfigured()`, `applyDefaultConfig()` |
 | `client/QcInteraction.java` | crosshair logic: `enterEditorMode`, `reanchor`, `adoptNearbyLattice`, `cursor`, `click`, keybind pump `onClientTick` |
 | `client/QcClientState.java` | the static client session (layers, palette, anchor, lattice, `nearbyUnits`, HUD message) and `reset()` |
+| `client/QcUi.java` | the shared screen/HUD toolkit: theme colours, `panel`, `titleBar`, `status`, `Chip`, `Stepper`, tool colours, icons, tooltips |
+| `client/QcHud.java` | the editor HUD panel (Left Alt swaps it for the controls list read from the live key bindings) and the fading message toast above the hotbar |
 | `client/QcOverlayRenderer.java` | the overlay after the translucent pass via `getBuffer(RenderType.lines())` + `LevelRenderer.renderLineBox`, flushed by itself; cells, plates, cursor, markers |
 | `platform/QcPlatform.java` | the common -> loader services (game dir, send packet) |
 | `fabric/.../fabric/mixin/MinecraftClientMixin.java` | cancels `startAttack`/`startUseItem` at `HEAD` while a session is active - without it RMB/LMB still edit the world |

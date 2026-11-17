@@ -1,28 +1,32 @@
 package com.qccore.client;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.qccore.client.QcInteraction.Cursor;
 import com.qccore.core.plan.BuildShape;
 import com.qccore.core.plan.ComponentMask;
 import com.qccore.core.plan.Modifiers;
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import org.lwjgl.glfw.GLFW;
 
-/** The editor HUD: lattice, cursor, tool and shape, the plan, the controls, and the pending message. */
+/**
+ * The editor HUD: a compact status panel in the top-left corner (tool with its icon and colour,
+ * shape progress, components or style, modifiers, plan, cursor, lattice, plan problems), the
+ * pending message as a fading toast above the hotbar (also outside a session, so "enter the editor
+ * first" is seen), and the full list of controls - with the player's actual key bindings - while
+ * Left Alt is held.
+ */
 public final class QcHud {
-	private static final String CONTROLS =
-			"RMB use tool   LMB erase/cancel shape   Shift+RMB wall   Ctrl+RMB gate   Shift/Ctrl+LMB clear";
-	private static final String KEYBINDS =
-			"B tools  N tool  V shape  Z undo (Shift redo)  R turn template  M ghosts  K apply  J export  I components";
-	private static final String KEYBINDS_2 =
-			"G exit   Y re-anchor   H duplicate layer   U align   O overlay   /qc undo | redo the last apply";
-	private static final int TOOL_COLOR = 0x9FE0FF;
-	private static final int WARN_COLOR = 0xFF8080;
-	private static final int LINE_COLOR = 0xFFFFFF;
-	private static final int MESSAGE_COLOR = 0xFFE36E;
-	private static final int LINE_OFFSET = 4;
+	private static final int PAD = 4;
 	private static final int LINE_HEIGHT = 10;
+	private static final int LABEL_WIDTH = 46;
+	private static final int MAX_WIDTH = 260;
 
 	private QcHud() {
 	}
@@ -30,99 +34,214 @@ public final class QcHud {
 	/** Called by the loader glue for every HUD frame (Fabric {@code HudRenderCallback}, Forge a GUI overlay); draws nothing outside a session. */
 	public static void render(GuiGraphics context, float tickDelta) {
 		Minecraft client = Minecraft.getInstance();
+		Font font = client.font;
+		renderToast(context, font, client, tickDelta);
 		if (!QcClientState.active || QcClientState.anchor == null) {
 			return;
 		}
-		int y = LINE_OFFSET;
-		context.drawString(client.font, latticeLine(), LINE_OFFSET, y, LINE_COLOR);
-		y += LINE_HEIGHT;
-		context.drawString(client.font, cursorLine(client), LINE_OFFSET, y, LINE_COLOR);
-		y += LINE_HEIGHT;
-		context.drawString(client.font, toolLine(), LINE_OFFSET, y, TOOL_COLOR);
-		y += LINE_HEIGHT;
-		context.drawString(client.font, planLine(), LINE_OFFSET, y, TOOL_COLOR);
-		y += LINE_HEIGHT;
-		String problem = QcBlockPreview.problem();
+		QcTool tool = QcClientState.tool;
+		int toolColor = QcUi.color(tool);
+		boolean help = altDown(client);
+
+		List<Row> rows = help ? controls(client) : status(client);
+		int labelWidth = LABEL_WIDTH;
+		if (help) {
+			labelWidth = 0;
+			for (Row row : rows) {
+				labelWidth = Math.max(labelWidth, font.width(row.label()));
+			}
+			labelWidth += 2 * PAD + 4;
+		}
+		String problem = help ? null : QcBlockPreview.problem();
+		int width = 24 + font.width(tool.label()) + 2 * PAD;
+		for (Row row : rows) {
+			width = Math.max(width, labelWidth + font.width(row.value()) + 2 * PAD);
+		}
 		if (problem != null) {
-			context.drawString(client.font, "plan problem: " + problem, LINE_OFFSET, y, WARN_COLOR);
-			y += LINE_HEIGHT;
+			width = Math.max(width, font.width("⚠ " + problem) + 2 * PAD);
 		}
-		context.drawString(client.font, CONTROLS, LINE_OFFSET, y, LINE_COLOR);
-		y += LINE_HEIGHT;
-		context.drawString(client.font, KEYBINDS, LINE_OFFSET, y, LINE_COLOR);
-		y += LINE_HEIGHT;
-		context.drawString(client.font, KEYBINDS_2, LINE_OFFSET, y, LINE_COLOR);
-		if (QcClientState.messageTicks > 0 && QcClientState.message != null) {
-			y += LINE_HEIGHT;
-			context.drawString(client.font, QcClientState.message, LINE_OFFSET, y, MESSAGE_COLOR);
+		width = Math.min(width, MAX_WIDTH);
+		int x = PAD;
+		int y = PAD;
+		int height = 22 + rows.size() * LINE_HEIGHT + (problem != null ? LINE_HEIGHT : 0) + 12;
+		context.fill(x, y, x + width, y + height, 0xC0101318);
+		context.fill(x, y, x + 2, y + height, toolColor);
+
+		// header: tool icon, title, tool name
+		context.renderItem(QcUi.icon(tool), x + 4, y + 2);
+		context.drawString(font, help ? "QC Editor · controls" : "QC Editor", x + 23, y + 3, QcUi.MUTED, false);
+		context.drawString(font, tool.label(), x + 23, y + 12, toolColor, true);
+		int lineY = y + 22;
+		for (Row row : rows) {
+			int labelX = help ? x + labelWidth - PAD - 4 - font.width(row.label()) : x + PAD + 2;
+			context.drawString(font, row.label(), labelX, lineY, help ? QcUi.WARN : 0xFF8A94A3, false);
+			context.drawString(font, font.plainSubstrByWidth(row.value(), width - labelWidth - PAD),
+					x + labelWidth, lineY, row.color(), false);
+			lineY += LINE_HEIGHT;
 		}
+		if (problem != null) {
+			context.drawString(font, font.plainSubstrByWidth("⚠ " + problem, width - 2 * PAD), x + PAD + 2, lineY, QcUi.ERROR, false);
+			lineY += LINE_HEIGHT;
+		}
+		context.drawString(font, help ? "release Alt to go back" : key(QcKeys.tools) + " tools · hold Alt: controls",
+				x + PAD + 2, lineY + 1, QcUi.DIM, false);
 	}
 
-	private static String toolLine() {
+	private static List<Row> status(Minecraft client) {
 		QcTool tool = QcClientState.tool;
-		StringBuilder line = new StringBuilder("tool: ").append(tool.label());
-		if (tool == QcTool.TEMPLATE) {
-			line.append(" ").append(QcClientState.templateName.isEmpty() ? "<none>" : QcClientState.templateName)
-					.append(" ").append(QcClientState.templateRotation * 90).append(" deg");
-		} else {
-			BuildShape shape = QcInteraction.activeShape();
-			line.append("  shape: ").append(shape.label());
-			if (!QcClientState.points.isEmpty()) {
-				line.append(" (point ").append(QcClientState.points.size() + 1).append("/").append(shape.points()).append(")");
-			}
-		}
+		List<Row> rows = new ArrayList<>();
+		rows.add(new Row("shape", shapeText(), QcUi.TEXT));
 		if (tool == QcTool.UNITS || tool == QcTool.PAINT) {
-			line.append("  components: ").append(ComponentMask.describe(QcClientState.componentMask));
+			rows.add(new Row("parts", partsText(), QcUi.TEXT));
 		}
 		if (tool == QcTool.ROAD) {
-			line.append("  style: ").append(QcClientState.roadStyle);
+			rows.add(new Row("style", QcClientState.roadStyle, QcUi.TEXT));
 		}
-		Modifiers modifiers = QcClientState.modifiers;
-		if (modifiers.isActive()) {
-			line.append("  modifiers:");
-			if (modifiers.mirrorX) {
-				line.append(" mirror E-W");
+		String modifiers = modifiersText();
+		if (modifiers != null) {
+			rows.add(new Row("mods", modifiers, QcUi.WARN));
+		}
+		rows.add(new Row("plan", QcUi.planSummary(), QcUi.TEXT));
+		rows.add(new Row("blocks", QcBlockPreview.size() + "  ·  ghosts " + (QcClientState.blockPreview ? "on" : "off"), QcUi.MUTED));
+		rows.add(new Row("cursor", cursorText(client), QcUi.MUTED));
+		rows.add(new Row("lattice", latticeText(), QcUi.MUTED));
+		return rows;
+	}
+
+	/** The fading message above the hotbar. */
+	private static void renderToast(GuiGraphics context, Font font, Minecraft client, float tickDelta) {
+		if (QcClientState.messageTicks <= 0 || QcClientState.message == null) {
+			return;
+		}
+		String text = QcClientState.message.startsWith("QC: ") ? QcClientState.message.substring(4) : QcClientState.message;
+		float alpha = Math.min(1.0F, (QcClientState.messageTicks - tickDelta) / 10.0F);
+		if (alpha <= 0.05F) {
+			return;
+		}
+		int w = font.width(text) + 16;
+		int screenW = client.getWindow().getGuiScaledWidth();
+		int screenH = client.getWindow().getGuiScaledHeight();
+		int x = (screenW - w) / 2;
+		int y = screenH - 74;
+		int accent = QcUi.color(QcClientState.tool);
+		context.fill(x, y, x + w, y + 14, QcUi.withAlpha(0x101318, 0.8F * alpha));
+		context.fill(x, y + 13, x + w, y + 14, QcUi.withAlpha(accent, alpha));
+		context.drawString(font, text, x + 8, y + 3, QcUi.withAlpha(0xFFE36E, Math.max(alpha, 0.1F)), false);
+	}
+
+	/** {@code key -> action}, read from the live bindings so a rebinding shows up here. */
+	private static List<Row> controls(Minecraft client) {
+		String use = key(client.options.keyUse);
+		String attack = key(client.options.keyAttack);
+		String[][] controls = {
+				{use, "use tool / next point"},
+				{attack, "erase / cancel shape"},
+				{"Shift+" + use, "wall on a shared face"},
+				{"Ctrl+" + use, "gate on a shared face"},
+				{"Shift/Ctrl+" + attack, "clear wall / gate"},
+				{key(QcKeys.tools), "planning tools"},
+				{key(QcKeys.tool) + " / " + key(QcKeys.shape), "cycle tool / shape"},
+				{key(QcKeys.undo), "undo edit (Shift: redo)"},
+				{key(QcKeys.rotate), "turn template"},
+				{key(QcKeys.preview) + " / " + key(QcKeys.overlay), "ghost blocks / overlay"},
+				{key(QcKeys.build), "apply plan to world"},
+				{key(QcKeys.save), "export plan .nbt"},
+				{key(QcKeys.config), "components & lattice"},
+				{key(QcKeys.reanchor), "re-anchor here"},
+				{key(QcKeys.duplicateLayer), "duplicate layer up"},
+				{key(QcKeys.unitAlign), "align placed unit"},
+				{key(QcKeys.editor), "leave the editor"},
+		};
+		List<Row> rows = new ArrayList<>();
+		for (String[] control : controls) {
+			rows.add(new Row(control[0], control[1], QcUi.TEXT));
+		}
+		return rows;
+	}
+
+	private static String key(KeyMapping mapping) {
+		if (mapping == null) {
+			return "?";
+		}
+		return mapping.getTranslatedKeyMessage().getString()
+				.replace("Left Button", "LMB").replace("Right Button", "RMB").replace("Middle Button", "MMB");
+	}
+
+	private static boolean altDown(Minecraft client) {
+		return client.screen == null && InputConstants.isKeyDown(client.getWindow().getWindow(), GLFW.GLFW_KEY_LEFT_ALT);
+	}
+
+	private static String shapeText() {
+		QcTool tool = QcClientState.tool;
+		if (tool == QcTool.TEMPLATE) {
+			return (QcClientState.templateName.isEmpty() ? "no template chosen" : QcClientState.templateName)
+					+ "  ·  " + QcClientState.templateRotation * 90 + "°";
+		}
+		BuildShape shape = QcInteraction.activeShape();
+		StringBuilder line = new StringBuilder(shape.label());
+		if (shape.points() > 1) {
+			int done = QcClientState.points.size();
+			line.append("  ");
+			for (int i = 0; i < shape.points(); i++) {
+				line.append(i < done ? "●" : i == done ? "◉" : "○");
 			}
-			if (modifiers.mirrorZ) {
-				line.append(" mirror N-S");
-			}
-			if (modifiers.arrayCount > 1) {
-				line.append(" array x").append(modifiers.arrayCount);
-			}
+			line.append(done == 0 ? "  click to start" : "  point " + (done + 1) + "/" + shape.points());
 		}
 		return line.toString();
 	}
 
-	private static String planLine() {
-		return "plan: " + QcClientState.plan.summary() + ", " + QcBlockPreview.size() + " block(s)   ghosts "
-				+ (QcClientState.blockPreview ? "on" : "off");
-	}
-
-	private static String latticeLine() {
-		BlockPos anchor = QcClientState.anchor;
-		return "QC editor  lattice: " + latticeLabel() + "  anchor: "
-				+ anchor.getX() + " " + anchor.getY() + " " + anchor.getZ();
-	}
-
-	private static String latticeLabel() {
-		if (QcClientState.alignA == null && QcClientState.alignB == null && QcClientState.alignC == null) {
-			return "free";
+	/** The component mask, said the short way round: "all nine", "all but gate", or the parts that are on. */
+	private static String partsText() {
+		int mask = QcClientState.componentMask;
+		if (mask == ComponentMask.ALL) {
+			return "all nine";
 		}
-		return residue(QcClientState.alignA) + "," + residue(QcClientState.alignB) + "," + residue(QcClientState.alignC);
+		if (Integer.bitCount(mask) >= 6) {
+			return "all but " + ComponentMask.describe(ComponentMask.ALL & ~mask).replace("+", ", ");
+		}
+		return ComponentMask.describe(mask);
 	}
 
-	private static String cursorLine(Minecraft client) {
+	private static String modifiersText() {
+		Modifiers modifiers = QcClientState.modifiers;
+		if (!modifiers.isActive()) {
+			return null;
+		}
+		List<String> parts = new ArrayList<>();
+		if (modifiers.mirrorX) {
+			parts.add("mirror E-W");
+		}
+		if (modifiers.mirrorZ) {
+			parts.add("mirror N-S");
+		}
+		if (modifiers.arrayCount > 1) {
+			parts.add("array ×" + modifiers.arrayCount);
+		}
+		return String.join(" · ", parts);
+	}
+
+	private static String latticeText() {
+		BlockPos anchor = QcClientState.anchor;
+		String lattice = QcClientState.alignA == null && QcClientState.alignB == null && QcClientState.alignC == null
+				? "free" : "8x+" + residue(QcClientState.alignA) + " 8y+" + residue(QcClientState.alignB)
+				+ " 8z+" + residue(QcClientState.alignC);
+		return lattice + "  ·  anchor " + anchor.getX() + " " + anchor.getY() + " " + anchor.getZ();
+	}
+
+	private static String cursorText(Minecraft client) {
 		Cursor cursor = QcInteraction.cursor(client);
 		if (cursor == null) {
-			return "cursor: none";
+			return "—";
 		}
 		Direction face = cursor.face();
-		return "cursor: cell " + cursor.cell().x() + "," + cursor.cell().z()
-				+ "  layer " + cursor.layer()
-				+ "  face: " + (face == null ? "none" : face.getName());
+		return "cell " + cursor.cell().x() + ", " + cursor.cell().z() + "  ·  layer " + cursor.layer()
+				+ (face == null ? "" : "  ·  " + face.getName());
 	}
 
 	private static int residue(Integer value) {
 		return value == null ? 0 : value;
+	}
+
+	private record Row(String label, String value, int color) {
 	}
 }
