@@ -2,6 +2,57 @@
 
 Fabric mod for Minecraft 1.20.1.
 
+## Planning QC buildings in the world
+
+QCCore is an Effortless-Building-style tool for **QC Units** (9x9x9 cells on an 8-block pitch that
+share their boundary planes). You queue up modifications as a **plan**, see them as wireframes and
+ghost blocks, and only then **apply** the whole plan to the world in one step (creative only, undoable)
+or **export** it as a vanilla structure `.nbt`.
+
+1. Press **G** to enter the editor: the lattice is anchored at your feet (layer 1 = your cell), or
+   on the lattice of a nearby QC building. **Y** re-anchors at the crosshair.
+2. Pick a **tool** (**N** cycles, or **B** for the tools screen) and a **shape** (**V** cycles):
+
+   | Tool | Right click over the shape |
+   |---|---|
+   | units | adds QC units building the selected components |
+   | erase | removes planned units, roads and cleared cells |
+   | paint components | sets the selected components on planned units |
+   | partition: walls / gates / open | inner walls, inner walls with a gate (rooms), or nothing (a hall) on every shared side inside the shape |
+   | clear terrain | clears the cells (local y 1..8, plus a 0-4 block margin outside the exposed sides and above) and optionally levels the floor plane with a ground block |
+   | road | lays a QC road: qckit's 7-wide negative space, lanes 1-4, joint lights every 8 blocks, a medallion at bends/tees/crossings |
+   | template | stamps a saved template at the crosshair; **R** turns it a quarter |
+
+   | Shape | Clicks |
+   |---|---|
+   | single | 1 (hold to paint) |
+   | line | 2 (dominant horizontal axis) |
+   | floor / ring | 2 corners (filled rectangle / its outline) |
+   | box / hollow box | 2 corners, then aim up or down for the height |
+
+   **LMB** cancels a shape in progress, otherwise erases the aimed cell. **Shift/Ctrl + RMB/LMB** set or
+   clear a single wall/gate on the aimed face, as before.
+3. **Components**: in the tools screen choose which of the nine components new units build (all, "shell
+   only" = framework + floor, "skin only", or any combination) — build just the framework of a block of
+   units, then paint the rest on later. A unit planned with all nine components clears its footprint
+   (cell + 2-block shell) when applied; a partial unit only adds blocks to what stands there.
+4. **Modifiers** (tools screen): mirror east-west and/or north-south through a mirror cell, and an array
+   (copies + a step in cells along x / layer / z). They apply to every shape and to templates.
+5. **Undo/redo** plan edits with **Z** / **Shift+Z** (100 steps). **H** copies the aimed layer one up.
+6. **K** applies the plan to the world. **/qc undo** (or "Undo last apply" in the tools screen)
+   reverts the last 10 applies (in memory; block-entity contents are not restored).
+   **J** exports the plan as `.nbt` to the schematics folder, sparse by default, or with the clearing
+   written as air.
+7. **M** toggles the ghost-block preview, **O** the wireframes, **I** opens the nine components and
+   the lattice, **U** re-aligns a placed building.
+
+**Templates** (tools screen → Templates…) save the whole plan — units, flags, component masks, roads,
+cleared cells and the palette — to `<gameDir>/qccore/templates/<name>.qct.nbt`; pick one to stamp it with
+the template tool. **Kits** (tools screen → Kits & roads…) are the in-game counterpart of qckit's per-build
+block choices: the palette, the road styles and the ground block as editable JSON in
+`<gameDir>/qccore/kits/<name>.json`. As in qckit there are no preset road styles: choose the blocks of each
+lane (block states allowed, e.g. `oak_log[axis=x]`) and save them as a kit.
+
 ## Requirements
 
 - JDK 21 (the build targets Java 17 bytecode, which is what Minecraft 1.20.1 runs on)

@@ -5,6 +5,9 @@ import com.qccore.core.QcUnit;
 import com.qccore.core.UnitLayers;
 import com.qccore.core.UnitPos;
 import com.qccore.core.UnitSide;
+import com.qccore.core.plan.Cell;
+import com.qccore.core.plan.ComponentMask;
+import com.qccore.core.plan.Modifiers;
 import com.qccore.world.QcUnitRecord;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
@@ -20,8 +23,10 @@ import net.minecraft.util.math.Vec3d;
 import java.util.Map;
 
 /**
- * Draws the layout as a translucent wireframe in the world: the cells of every layer, the wall and
- * gate plates, the cursor cell and the markers for reported units and the anchor.
+ * Draws the plan in the world: ghost blocks of what it would place ({@link QcBlockPreview}), the
+ * unit cells of every layer as a wireframe (partial-component units in purple), the wall and gate
+ * plates, cleared cells, road plates, the shape in progress in the tool's colour, the mirror planes,
+ * the cursor cell and the markers for reported units and the anchor.
  */
 public final class QcOverlayRenderer implements WorldRenderEvents.AfterTranslucent {
 	public static final QcOverlayRenderer INSTANCE = new QcOverlayRenderer();
@@ -46,6 +51,14 @@ public final class QcOverlayRenderer implements WorldRenderEvents.AfterTransluce
 	private static final float ANCHOR_RED = 0.20F;
 	private static final float ANCHOR_GREEN = 0.95F;
 	private static final float ANCHOR_BLUE = 0.55F;
+	private static final float PARTIAL_RED = 0.75F;
+	private static final float PARTIAL_GREEN = 0.45F;
+	private static final float PARTIAL_BLUE = 0.95F;
+	private static final float MIRROR_RED = 0.95F;
+	private static final float MIRROR_GREEN = 0.3F;
+	private static final float MIRROR_BLUE = 0.85F;
+	/** Half the length of a drawn mirror plane, in blocks. */
+	private static final double MIRROR_REACH = 48.0;
 
 	/** Cells further than this from the camera are not drawn. */
 	private static final double VIEW_RANGE = 128.0;
@@ -66,16 +79,19 @@ public final class QcOverlayRenderer implements WorldRenderEvents.AfterTransluce
 				|| QcClientState.anchor == null) {
 			return;
 		}
-		VertexConsumerProvider consumers = context.consumers();
-		VertexConsumer vertices = consumers.getBuffer(RenderLayer.getLines());
 		MatrixStack matrices = context.matrixStack();
 		Vec3d camera = context.camera().getPos();
 		Cursor cursor = QcInteraction.cursor(client);
 		matrices.push();
 		try {
 			matrices.translate(-camera.x, -camera.y, -camera.z);
+			QcBlockPreview.render(client, matrices, camera);
+			VertexConsumerProvider consumers = context.consumers();
+			VertexConsumer vertices = consumers.getBuffer(RenderLayer.getLines());
 			drawCells(matrices, vertices, camera, cursor);
 			drawWalls(matrices, vertices);
+			drawPlanExtras(matrices, vertices, camera);
+			drawShape(client, matrices, vertices);
 			drawCursor(matrices, vertices, cursor);
 			drawMarkers(matrices, vertices);
 		} finally {
@@ -85,7 +101,7 @@ public final class QcOverlayRenderer implements WorldRenderEvents.AfterTransluce
 
 	/** Every unit cell of every layer; the cursor layer is highlighted. */
 	private void drawCells(MatrixStack matrices, VertexConsumer vertices, Vec3d camera, Cursor cursor) {
-		UnitLayers layers = QcClientState.layers;
+		UnitLayers layers = QcClientState.plan.units();
 		int drawn = 0;
 		for (int layer : layers.layerKeys()) {
 			Map<UnitPos, QcUnit> units = layers.peekLayer(layer);
@@ -102,10 +118,11 @@ public final class QcOverlayRenderer implements WorldRenderEvents.AfterTransluce
 					return;
 				}
 				boolean current = cursor != null && cursor.layer() == layer;
+				boolean partial = QcClientState.plan.mask(Cell.of(cell, layer)) != ComponentMask.ALL;
 				drawBox(matrices, vertices, origin, 8.0,
-						current ? CURSOR_LAYER_RED : LAYER_RED,
-						current ? CURSOR_LAYER_GREEN : LAYER_GREEN,
-						current ? CURSOR_LAYER_BLUE : LAYER_BLUE,
+						current ? CURSOR_LAYER_RED : partial ? PARTIAL_RED : LAYER_RED,
+						current ? CURSOR_LAYER_GREEN : partial ? PARTIAL_GREEN : LAYER_GREEN,
+						current ? CURSOR_LAYER_BLUE : partial ? PARTIAL_BLUE : LAYER_BLUE,
 						current ? LAYER_OPAQUE_ALPHA : LAYER_ALPHA);
 				drawn++;
 			}
@@ -117,7 +134,7 @@ public final class QcOverlayRenderer implements WorldRenderEvents.AfterTransluce
 	 * colour, exactly as QCSimple draws a dashed gate line instead of a solid wall line.
 	 */
 	private void drawWalls(MatrixStack matrices, VertexConsumer vertices) {
-		UnitLayers layers = QcClientState.layers;
+		UnitLayers layers = QcClientState.plan.units();
 		for (int layer : layers.layerKeys()) {
 			Map<UnitPos, QcUnit> units = layers.peekLayer(layer);
 			if (units == null) {
@@ -160,6 +177,67 @@ public final class QcOverlayRenderer implements WorldRenderEvents.AfterTransluce
 			case EAST -> WorldRenderer.drawBox(matrices, vertices, origin.getX() + 8.0 + PLATE_OFFSET, lowY, lowZ,
 					origin.getX() + 8.0 + PLATE_OFFSET, highY, highZ, red, green, blue, LAYER_OPAQUE_ALPHA);
 		}
+	}
+
+	/** Cleared cells (an orange inner box) and road cells (a grey plate on the floor plane, 7 wide). */
+	private void drawPlanExtras(MatrixStack matrices, VertexConsumer vertices, Vec3d camera) {
+		int drawn = 0;
+		for (Cell cell : QcClientState.plan.clears()) {
+			BlockPos origin = QcInteraction.cellOrigin(cell.pos(), cell.layer());
+			if (far(camera, origin) || drawn++ >= CELL_LIMIT) {
+				continue;
+			}
+			WorldRenderer.drawBox(matrices, vertices, origin.getX() + 0.3, origin.getY() + 1.0, origin.getZ() + 0.3,
+					origin.getX() + 8.7, origin.getY() + 8.7, origin.getZ() + 8.7,
+					QcTool.CLEAR.red, QcTool.CLEAR.green, QcTool.CLEAR.blue, LAYER_OPAQUE_ALPHA);
+		}
+		for (Cell cell : QcClientState.plan.roads().keySet()) {
+			BlockPos origin = QcInteraction.cellOrigin(cell.pos(), cell.layer());
+			if (far(camera, origin) || drawn++ >= CELL_LIMIT) {
+				continue;
+			}
+			WorldRenderer.drawBox(matrices, vertices, origin.getX() + 1.0, origin.getY() + 1.02, origin.getZ() + 1.0,
+					origin.getX() + 8.0, origin.getY() + 1.02, origin.getZ() + 8.0,
+					QcTool.ROAD.red, QcTool.ROAD.green, QcTool.ROAD.blue, LAYER_OPAQUE_ALPHA);
+		}
+	}
+
+	/** The cells the shape in progress (or the template under the crosshair) covers, plus the mirror planes. */
+	private void drawShape(MinecraftClient client, MatrixStack matrices, VertexConsumer vertices) {
+		QcTool tool = QcClientState.tool;
+		int drawn = 0;
+		for (Cell cell : QcInteraction.previewCells(client)) {
+			if (drawn++ >= CELL_LIMIT) {
+				break;
+			}
+			BlockPos origin = QcInteraction.cellOrigin(cell.pos(), cell.layer());
+			WorldRenderer.drawBox(matrices, vertices, origin.getX() + 0.1, origin.getY() + 0.1, origin.getZ() + 0.1,
+					origin.getX() + 8.9, origin.getY() + 8.9, origin.getZ() + 8.9,
+					tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
+		}
+		Modifiers modifiers = QcClientState.modifiers;
+		BlockPos anchor = QcClientState.anchor;
+		if (anchor == null || !(modifiers.mirrorX || modifiers.mirrorZ)) {
+			return;
+		}
+		Cursor cursor = QcInteraction.cursor(client);
+		int layer = cursor == null ? 1 : cursor.layer();
+		double y0 = anchor.getY() + layer * 8.0;
+		double y1 = y0 + 9.0;
+		double centreX = anchor.getX() + modifiers.mirrorCellX * 8 + 4.5;
+		double centreZ = anchor.getZ() + modifiers.mirrorCellZ * 8 + 4.5;
+		if (modifiers.mirrorX) {
+			WorldRenderer.drawBox(matrices, vertices, centreX, y0, centreZ - MIRROR_REACH, centreX, y1, centreZ + MIRROR_REACH,
+					MIRROR_RED, MIRROR_GREEN, MIRROR_BLUE, LAYER_OPAQUE_ALPHA);
+		}
+		if (modifiers.mirrorZ) {
+			WorldRenderer.drawBox(matrices, vertices, centreX - MIRROR_REACH, y0, centreZ, centreX + MIRROR_REACH, y1, centreZ,
+					MIRROR_RED, MIRROR_GREEN, MIRROR_BLUE, LAYER_OPAQUE_ALPHA);
+		}
+	}
+
+	private static boolean far(Vec3d camera, BlockPos origin) {
+		return camera.squaredDistanceTo(origin.getX() + 4.0, origin.getY() + 4.0, origin.getZ() + 4.0) > VIEW_RANGE * VIEW_RANGE;
 	}
 
 	private void drawCursor(MatrixStack matrices, VertexConsumer vertices, Cursor cursor) {

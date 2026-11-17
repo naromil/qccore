@@ -1,6 +1,9 @@
 package com.qccore.net;
 
+import com.qccore.core.QcResult;
+import com.qccore.world.QcUndoService;
 import com.qccore.world.QcUnitIndex;
+import net.minecraft.server.network.ServerPlayerEntity;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.server.command.CommandManager;
@@ -17,8 +20,9 @@ import java.util.Map;
 import com.qccore.world.QcUnitRecord;
 
 /**
- * The {@code /qc} command: what the index knows, and how to forget a region of it. Both children
- * need permission level 2 and work from the dedicated server console as well.
+ * The {@code /qc} command: what the index knows, how to forget a region of it and how to undo the
+ * last applied plan. Every child needs permission level 2; {@code info} and {@code forget} work from
+ * the dedicated server console as well, {@code undo} needs a player.
  */
 public final class QcCommands {
 
@@ -34,6 +38,9 @@ public final class QcCommands {
                         .then(CommandManager.literal("info")
                                 .requires(source -> source.hasPermissionLevel(2))
                                 .executes(context -> info(context.getSource())))
+                        .then(CommandManager.literal("undo")
+                                .requires(source -> source.hasPermissionLevel(2))
+                                .executes(context -> undo(context.getSource())))
                         .then(CommandManager.literal("forget")
                                 .requires(source -> source.hasPermissionLevel(2))
                                 .executes(context -> forget(context.getSource(), DEFAULT_RADIUS))
@@ -60,6 +67,18 @@ public final class QcCommands {
         source.sendFeedback(() -> Text.literal(close + " within " + INFO_RADIUS + " blocks of " + pos.getX() + " " + pos.getY()
                 + " " + pos.getZ()), false);
         return total;
+    }
+
+    private static int undo(ServerCommandSource source) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity player = source.getPlayerOrThrow();
+        QcResult result = QcUndoService.undo(player);
+        if (!result.ok()) {
+            source.sendError(Text.literal(result.message()));
+            return 0;
+        }
+        source.sendFeedback(() -> Text.literal(result.message()), false);
+        QcServerNetworking.push(player);
+        return 1;
     }
 
     private static int forget(ServerCommandSource source, int radius) {

@@ -124,7 +124,7 @@ public final class QcBuildService {
         return origins;
     }
 
-    private static QcResult validateComponentSize(String name, QcComponent component, String expected) {
+    static QcResult validateComponentSize(String name, QcComponent component, String expected) {
         if (component.isEmpty() || component.isValidSize(component.getSizeX(), component.getSizeY(), component.getSizeZ())) {
             return null;
         }

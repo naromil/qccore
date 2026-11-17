@@ -37,6 +37,11 @@ public final class QcWorldOps {
      * Positions that belong to another unit's cell are left alone.
      */
     static void clearFootprint(ServerWorld world, Collection<BlockPos> unitOrigins) {
+        clearFootprint(world, unitOrigins, null);
+    }
+
+    /** {@link #clearFootprint(ServerWorld, Collection)} recording every previous state into {@code undo}. */
+    static void clearFootprint(ServerWorld world, Collection<BlockPos> unitOrigins, Map<BlockPos, BlockState> undo) {
         Set<BlockPos> origins = new HashSet<>(unitOrigins);
         Map<Long, List<BlockPos>> buckets = bucketize(origins);
 
@@ -44,7 +49,7 @@ public final class QcWorldOps {
             for (int x = 0; x < CELL_SIZE; x++) {
                 for (int y = 0; y < CELL_SIZE; y++) {
                     for (int z = 0; z < CELL_SIZE; z++) {
-                        clear(world, origin.add(x, y, z));
+                        clear(world, origin.add(x, y, z), undo);
                     }
                 }
             }
@@ -66,7 +71,7 @@ public final class QcWorldOps {
                             if (insideAnyCell(buckets, pos)) {
                                 continue;
                             }
-                            clear(world, pos);
+                            clear(world, pos, undo);
                         }
                     }
                 }
@@ -76,7 +81,47 @@ public final class QcWorldOps {
 
     /** Writes every block of the layout, skipping positions outside the world. */
     static void placeBlocks(ServerWorld world, Map<BlockPos, BlockState> blockMap) {
+        placeBlocks(world, blockMap, null);
+    }
+
+    /** {@link #placeBlocks(ServerWorld, Map)} recording every previous state into {@code undo}. */
+    static void placeBlocks(ServerWorld world, Map<BlockPos, BlockState> blockMap, Map<BlockPos, BlockState> undo) {
         for (Map.Entry<BlockPos, BlockState> entry : blockMap.entrySet()) {
+            BlockPos pos = entry.getKey();
+            if (!World.isValid(pos) || pos.getY() < world.getBottomY() || pos.getY() >= world.getTopY()) {
+                continue;
+            }
+            record(world, pos, undo);
+            world.setBlockState(pos, entry.getValue(), FLAGS);
+        }
+    }
+
+    /** Sets every position to air (terrain clearing), recording the previous states into {@code undo}. */
+    static void clearBlocks(ServerWorld world, Collection<BlockPos> positions, Map<BlockPos, BlockState> undo) {
+        for (BlockPos pos : positions) {
+            clear(world, pos, undo);
+        }
+    }
+
+    /**
+     * Places the blocks only where the world is air or replaceable (water, grass, snow layers): the
+     * ground levelling of cleared cells never overwrites solid terrain.
+     */
+    static void fillAir(ServerWorld world, Map<BlockPos, BlockState> blockMap, Map<BlockPos, BlockState> undo) {
+        for (Map.Entry<BlockPos, BlockState> entry : blockMap.entrySet()) {
+            BlockPos pos = entry.getKey();
+            if (!World.isValid(pos) || pos.getY() < world.getBottomY() || pos.getY() >= world.getTopY()
+                    || !world.getBlockState(pos).isReplaceable()) {
+                continue;
+            }
+            record(world, pos, undo);
+            world.setBlockState(pos, entry.getValue(), FLAGS);
+        }
+    }
+
+    /** Writes recorded states back (an undo), in the order given. */
+    static void restore(ServerWorld world, Map<BlockPos, BlockState> states) {
+        for (Map.Entry<BlockPos, BlockState> entry : states.entrySet()) {
             BlockPos pos = entry.getKey();
             if (!World.isValid(pos) || pos.getY() < world.getBottomY() || pos.getY() >= world.getTopY()) {
                 continue;
@@ -95,11 +140,22 @@ public final class QcWorldOps {
         return true;
     }
 
-    private static void clear(ServerWorld world, BlockPos pos) {
+    private static void clear(ServerWorld world, BlockPos pos, Map<BlockPos, BlockState> undo) {
         if (!World.isValid(pos) || pos.getY() < world.getBottomY() || pos.getY() >= world.getTopY()) {
             return;
         }
+        if (undo != null && world.getBlockState(pos).isAir()) {
+            return;
+        }
+        record(world, pos, undo);
         world.setBlockState(pos, Blocks.AIR.getDefaultState(), FLAGS);
+    }
+
+    /** Keeps the first state seen at a position, i.e. the state before this whole operation. */
+    private static void record(ServerWorld world, BlockPos pos, Map<BlockPos, BlockState> undo) {
+        if (undo != null && !undo.containsKey(pos)) {
+            undo.put(pos.toImmutable(), world.getBlockState(pos));
+        }
     }
 
     /**

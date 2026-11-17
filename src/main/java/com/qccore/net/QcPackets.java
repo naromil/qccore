@@ -92,4 +92,45 @@ public final class QcPackets {
             return TYPE;
         }
     }
+
+    /**
+     * One chunk of a gzip-compressed plan request. Vanilla caps a client payload at 32767 bytes, so a
+     * request ({@code {"action","anchor":[x,y,z],"plan":PlanCodec,"palette":PaletteCodec}}) is split
+     * into chunks of {@link #CHUNK} bytes; the server reassembles the chunks of one {@code transfer}.
+     */
+    public record QcPlanC2S(int transfer, int index, int total, byte[] data) implements FabricPacket {
+
+        public static final int CHUNK = 30000;
+
+        public static final PacketType<QcPlanC2S> TYPE = PacketType.create(QCCore.id("plan"),
+                buf -> new QcPlanC2S(buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readByteArray(CHUNK)));
+
+        @Override
+        public void write(PacketByteBuf buf) {
+            buf.writeVarInt(transfer);
+            buf.writeVarInt(index);
+            buf.writeVarInt(total);
+            buf.writeByteArray(data);
+        }
+
+        @Override
+        public PacketType<?> getType() {
+            return TYPE;
+        }
+    }
+
+    /** Ask the server to undo the player's most recent applied plan. */
+    public record QcUndoC2S() implements FabricPacket {
+
+        public static final PacketType<QcUndoC2S> TYPE = PacketType.create(QCCore.id("undo"), buf -> new QcUndoC2S());
+
+        @Override
+        public void write(PacketByteBuf buf) {
+        }
+
+        @Override
+        public PacketType<?> getType() {
+            return TYPE;
+        }
+    }
 }

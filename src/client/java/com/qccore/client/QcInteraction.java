@@ -4,13 +4,16 @@ import com.qccore.core.Alignment;
 import com.qccore.core.QcUnit;
 import com.qccore.core.UnitPos;
 import com.qccore.core.UnitSide;
-import com.qccore.core.nbt.LayersCodec;
-import com.qccore.core.nbt.PaletteCodec;
-import com.qccore.net.QcPackets.QcBuildC2S;
+import com.qccore.core.plan.BuildShape;
+import com.qccore.core.plan.Cell;
+import com.qccore.core.plan.Flags;
+import com.qccore.core.plan.Modifiers;
+import com.qccore.core.plan.QcPlan;
+import com.qccore.core.plan.RoadStyle;
 import com.qccore.world.QcUnitRecord;
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.entity.Entity;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
@@ -21,14 +24,20 @@ import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Everything the in-world editor does with the crosshair: entering the mode, deriving the cursor
- * cell from the crosshair, and the mouse actions the input mixin forwards here. Rendering lives in
- * {@link QcOverlayRenderer}.
+ * cell from the crosshair, the build shapes and tools, and the mouse actions the input mixin
+ * forwards here. Rendering lives in {@link QcOverlayRenderer}.
+ *
+ * <p>Every action edits the plan in {@link QcClientState#plan}, never the world: the plan is applied
+ * with the build key (or exported with the save key) once the player is happy with it, and each
+ * edit is a step of {@link QcClientState#history}.
  */
 public final class QcInteraction {
 	private static final String LAYER_MESSAGE = "QC: layers start at 1";
@@ -39,6 +48,9 @@ public final class QcInteraction {
 
 	/** How close a reported unit has to be before the anchor adopts its lattice. */
 	private static final double LATTICE_RANGE = 48.0;
+
+	/** Whether the use key was held at the end of the previous tick (multi-point shapes need a fresh press). */
+	private static boolean useHeldLastTick;
 
 	/** Where the crosshair points, in session unit coordinates. */
 	public record Cursor(UnitPos cell, int layer, @Nullable Direction face, boolean blockHit) {
@@ -59,6 +71,7 @@ public final class QcInteraction {
 		QcClientState.active = true;
 		QcClientState.dimension = client.world.getRegistryKey().getValue();
 		adoptNearbyLattice();
+		QcClientState.changed();
 	}
 
 	/** Moves the session anchor to the crosshair; works for block hits and misses alike. */
@@ -71,6 +84,8 @@ public final class QcInteraction {
 		QcClientState.anchor = new BlockPos(MathHelper.floor(reference.x),
 				MathHelper.floor(reference.y) - 8, MathHelper.floor(reference.z));
 		adoptNearbyLattice();
+		QcClientState.points.clear();
+		QcClientState.changed();
 	}
 
 	/**
@@ -134,8 +149,56 @@ public final class QcInteraction {
 	}
 
 	/**
-	 * Runs one mouse button press. Holding a button repeats this on purpose and every action just
-	 * sets a state, which is what makes drag-painting behave like QCSimple's canvas drag.
+	 * The cell the next shape point lands in: for a placing tool the hit block offset by the hit
+	 * face (so aiming at a unit's side places next to it), otherwise the aimed cell; the layer is
+	 * always the aimed block's. The third point of a box picks its height along the vertical line
+	 * of the second point, wherever the crosshair ray passes closest to it.
+	 */
+	@Nullable
+	public static Cell target(MinecraftClient client) {
+		Cursor cursor = cursor(client);
+		if (cursor == null) {
+			return null;
+		}
+		List<Cell> points = QcClientState.points;
+		BuildShape shape = activeShape();
+		if (points.size() == 2 && shape.points() == 3) {
+			return new Cell(points.get(1).x(), heightLayer(client, points.get(1)), points.get(1).z());
+		}
+		UnitPos cell = cursor.cell();
+		if (isPlacingTool(QcClientState.tool) && cursor.blockHit() && client.crosshairTarget instanceof BlockHitResult hit) {
+			BlockPos reference = hit.getBlockPos().offset(cursor.face());
+			BlockPos anchor = QcClientState.anchor;
+			cell = new UnitPos(Math.floorDiv(reference.getX() - anchor.getX(), 8),
+					Math.floorDiv(reference.getZ() - anchor.getZ(), 8));
+		}
+		return Cell.of(cell, cursor.layer());
+	}
+
+	/** The shape the current tool uses: a template is always stamped with one click. */
+	public static BuildShape activeShape() {
+		return QcClientState.tool == QcTool.TEMPLATE ? BuildShape.SINGLE : QcClientState.shape;
+	}
+
+	/** The cells the shape in progress would cover if the crosshair point were the next click. */
+	public static Set<Cell> previewCells(MinecraftClient client) {
+		Cell next = target(client);
+		List<Cell> points = new java.util.ArrayList<>(QcClientState.points);
+		if (next != null) {
+			points.add(next);
+		}
+		if (points.isEmpty()) {
+			return Set.of();
+		}
+		if (QcClientState.tool == QcTool.TEMPLATE) {
+			return templateCells(points.get(0));
+		}
+		return QcClientState.modifiers.apply(activeShape().cells(points));
+	}
+
+	/**
+	 * Runs one mouse button press. A single-cell shape repeats while the button is held, which is
+	 * what makes drag-painting work; a multi-point shape takes one point per fresh press.
 	 */
 	public static void click(boolean useKey) {
 		MinecraftClient client = MinecraftClient.getInstance();
@@ -145,23 +208,210 @@ public final class QcInteraction {
 		}
 		boolean control = modifierDown(client, GLFW.GLFW_KEY_LEFT_CONTROL, GLFW.GLFW_KEY_RIGHT_CONTROL);
 		boolean shift = modifierDown(client, GLFW.GLFW_KEY_LEFT_SHIFT, GLFW.GLFW_KEY_RIGHT_SHIFT);
-		if (useKey) {
-			if (control) {
-				toggleWall(cursor, true, true);
-			} else if (shift) {
-				toggleWall(cursor, true, false);
-			} else {
-				place(client, cursor);
+		if (control || shift) {
+			edit(() -> toggleWall(cursor, useKey, control));
+			return;
+		}
+		if (!useKey) {
+			if (!QcClientState.points.isEmpty()) {
+				QcClientState.points.clear();
+				QcClientState.say("QC: shape cancelled");
+				return;
 			}
-		} else {
-			if (control) {
-				toggleWall(cursor, false, true);
-			} else if (shift) {
-				toggleWall(cursor, false, false);
-			} else {
-				erase(cursor);
+			Set<Cell> cells = Set.of(Cell.of(cursor.cell(), cursor.layer()));
+			edit(() -> erase(cells));
+			return;
+		}
+		BuildShape shape = activeShape();
+		if (shape.points() > 1 && useHeldLastTick) {
+			return;
+		}
+		Cell point = target(client);
+		if (point == null) {
+			return;
+		}
+		QcClientState.points.add(point);
+		if (QcClientState.points.size() < shape.points()) {
+			QcClientState.say("QC: " + shape.label() + " point " + QcClientState.points.size() + "/" + shape.points()
+					+ (QcClientState.points.size() == 2 ? " - aim up or down for the height" : "") + " (LMB cancels)");
+			return;
+		}
+		List<Cell> points = List.copyOf(QcClientState.points);
+		QcClientState.points.clear();
+		if (QcClientState.tool == QcTool.TEMPLATE) {
+			edit(() -> stampTemplate(points.get(0)));
+			return;
+		}
+		Set<Cell> cells = QcClientState.modifiers.apply(shape.cells(points));
+		edit(() -> runTool(QcClientState.tool, cells));
+	}
+
+	/** Runs a plan edit; when it changed something, the plan before it becomes an undo step. */
+	private static void edit(java.util.function.BooleanSupplier action) {
+		QcPlan before = QcClientState.plan.copy();
+		if (action.getAsBoolean()) {
+			QcClientState.history.push(before);
+			QcClientState.changed();
+		}
+	}
+
+	/** Applies a tool to a set of cells; returns whether the plan changed. */
+	static boolean runTool(QcTool tool, Set<Cell> cells) {
+		QcPlan plan = QcClientState.plan;
+		Set<Cell> valid = new LinkedHashSet<>();
+		for (Cell cell : cells) {
+			if (cell.layer() >= 1) {
+				valid.add(cell);
 			}
 		}
+		if (valid.size() < cells.size() && tool != QcTool.ERASE) {
+			QcClientState.say(LAYER_MESSAGE);
+		}
+		switch (tool) {
+			case UNITS -> {
+				boolean changed = false;
+				for (Cell cell : valid) {
+					if (!plan.hasUnit(cell)) {
+						plan.roads().remove(cell);
+						plan.addUnit(cell, QcClientState.componentMask);
+						changed = true;
+					}
+				}
+				return changed;
+			}
+			case ERASE -> {
+				return erase(cells);
+			}
+			case PAINT -> {
+				boolean changed = false;
+				for (Cell cell : valid) {
+					if (plan.hasUnit(cell) && plan.mask(cell) != QcClientState.componentMask) {
+						plan.setMask(cell, QcClientState.componentMask);
+						changed = true;
+					}
+				}
+				return changed;
+			}
+			case WALLS, GATES, OPEN -> {
+				if (valid.size() < 2) {
+					QcClientState.say("QC: a partition needs a shape of two or more units");
+					return false;
+				}
+				QcPlan.Partition partition = tool == QcTool.WALLS ? QcPlan.Partition.WALL
+						: tool == QcTool.GATES ? QcPlan.Partition.GATE : QcPlan.Partition.OPEN;
+				int changed = plan.partition(valid, partition);
+				QcClientState.say("QC: " + changed + " shared side(s) set to " + partition.name().toLowerCase(java.util.Locale.ROOT));
+				return changed > 0;
+			}
+			case CLEAR -> {
+				return plan.clears().addAll(valid);
+			}
+			case ROAD -> {
+				RoadStyle style = QcClientState.roadStyles.get(QcClientState.roadStyle);
+				if (style == null || !style.isComplete()) {
+					QcClientState.say("QC: choose a road style with four floor lanes first (B -> Kits & roads)");
+					return false;
+				}
+				plan.roadStyles().put(QcClientState.roadStyle, style.copy());
+				boolean changed = false;
+				for (Cell cell : valid) {
+					if (plan.hasUnit(cell)) {
+						plan.removeUnit(cell);
+					}
+					changed |= !QcClientState.roadStyle.equals(plan.roads().put(cell, QcClientState.roadStyle));
+				}
+				return changed;
+			}
+			case TEMPLATE -> {
+				return false;
+			}
+		}
+		return false;
+	}
+
+	/** Removes units, roads and cleared cells from the cells. */
+	private static boolean erase(Set<Cell> cells) {
+		QcPlan plan = QcClientState.plan;
+		boolean changed = false;
+		for (Cell cell : cells) {
+			if (plan.hasUnit(cell)) {
+				plan.removeUnit(cell);
+				changed = true;
+			}
+			changed |= plan.roads().remove(cell) != null;
+			changed |= plan.clears().remove(cell);
+		}
+		return changed;
+	}
+
+	/** Every placement of the template at {@code at}, with the modifiers applied. */
+	private static boolean stampTemplate(Cell at) {
+		QcPlan template = QcClientState.template;
+		if (template == null) {
+			QcClientState.say("QC: choose a template first (B -> Templates)");
+			return false;
+		}
+		if (at.layer() < 1) {
+			QcClientState.say(LAYER_MESSAGE);
+			return false;
+		}
+		for (QcPlan placed : templatePlacements(at)) {
+			QcClientState.plan.merge(placed);
+		}
+		QcClientState.say("QC: stamped template " + QcClientState.templateName);
+		return true;
+	}
+
+	/** The template turned by the current rotation and moved so its minimum cell is {@code at}, once per modifier placement. */
+	static List<QcPlan> templatePlacements(Cell at) {
+		QcPlan template = QcClientState.template;
+		if (template == null) {
+			return List.of();
+		}
+		QcPlan turned = template.transformed(QcClientState.templateRotation, false, false, 0, 0, 0).normalized();
+		Modifiers modifiers = QcClientState.modifiers;
+		List<QcPlan> out = new java.util.ArrayList<>();
+		for (Modifiers.Placement placement : modifiers.placements()) {
+			int dx = at.x() + placement.dx();
+			int dLayer = at.layer() - 1 + placement.dLayer();
+			int dz = at.z() + placement.dz();
+			QcPlan moved = turned.transformed(0, false, false, dx, dLayer, dz);
+			if (placement.flipX() || placement.flipZ()) {
+				moved = moved.transformed(0, placement.flipX(), placement.flipZ(),
+						placement.flipX() ? 2 * modifiers.mirrorCellX : 0, 0,
+						placement.flipZ() ? 2 * modifiers.mirrorCellZ : 0);
+			}
+			out.add(moved);
+		}
+		return out;
+	}
+
+	private static Set<Cell> templateCells(Cell at) {
+		Set<Cell> cells = new LinkedHashSet<>();
+		for (QcPlan placed : templatePlacements(at)) {
+			cells.addAll(placed.cells());
+		}
+		if (cells.isEmpty()) {
+			cells.add(at);
+		}
+		return cells;
+	}
+
+	/** The layer the crosshair ray passes closest to on the vertical line through a cell's centre. */
+	private static int heightLayer(MinecraftClient client, Cell base) {
+		Entity camera = client.getCameraEntity();
+		BlockPos anchor = QcClientState.anchor;
+		if (camera == null || anchor == null) {
+			return base.layer();
+		}
+		Vec3d eye = camera.getCameraPosVec(1.0F);
+		Vec3d look = camera.getRotationVec(1.0F);
+		double cx = anchor.getX() + base.x() * 8 + 4.5;
+		double cz = anchor.getZ() + base.z() * 8 + 4.5;
+		double horizontal = look.x * look.x + look.z * look.z;
+		double t = horizontal < 1.0E-6 ? 0.0 : ((cx - eye.x) * look.x + (cz - eye.z) * look.z) / horizontal;
+		double y = eye.y + Math.max(0.0, t) * look.y;
+		return Math.floorDiv(MathHelper.floor(y) - anchor.getY(), 8);
 	}
 
 	/** The keybind pump: world guard, keybinds and the HUD message lifetime. */
@@ -175,12 +425,14 @@ public final class QcInteraction {
 				QcClientState.say(WORLD_MESSAGE);
 			}
 		}
+		useHeldLastTick = client.options.useKey.isPressed();
 		if (QcClientState.messageTicks > 0 && --QcClientState.messageTicks == 0) {
 			QcClientState.message = null;
 		}
 		while (QcKeys.editor.wasPressed()) {
 			if (QcClientState.active) {
 				QcClientState.active = false;
+				QcClientState.points.clear();
 			} else {
 				enterEditorMode(client);
 			}
@@ -191,13 +443,13 @@ public final class QcInteraction {
 			}
 		}
 		while (QcKeys.duplicateLayer.wasPressed()) {
-			duplicateLayer(client);
+			edit(() -> duplicateLayer(client));
 		}
 		while (QcKeys.save.wasPressed()) {
 			client.setScreen(new QcSaveScreen());
 		}
 		while (QcKeys.build.wasPressed()) {
-			build();
+			apply();
 		}
 		while (QcKeys.config.wasPressed()) {
 			client.setScreen(new QcConfigScreen());
@@ -208,69 +460,156 @@ public final class QcInteraction {
 		while (QcKeys.overlay.wasPressed()) {
 			QcClientState.overlayVisible = !QcClientState.overlayVisible;
 		}
+		while (QcKeys.tools.wasPressed()) {
+			client.setScreen(new QcToolsScreen());
+		}
+		while (QcKeys.shape.wasPressed()) {
+			QcClientState.shape = QcClientState.shape.next();
+			QcClientState.points.clear();
+			QcClientState.say("QC: shape " + QcClientState.shape.label());
+		}
+		while (QcKeys.tool.wasPressed()) {
+			QcClientState.tool = QcClientState.tool.next();
+			QcClientState.points.clear();
+			QcClientState.say("QC: tool " + QcClientState.tool.label());
+		}
+		while (QcKeys.undo.wasPressed()) {
+			if (modifierDown(client, GLFW.GLFW_KEY_LEFT_SHIFT, GLFW.GLFW_KEY_RIGHT_SHIFT)) {
+				redo();
+			} else {
+				undo();
+			}
+		}
+		while (QcKeys.rotate.wasPressed()) {
+			QcClientState.templateRotation = (QcClientState.templateRotation + 1) % 4;
+			QcClientState.say("QC: template rotation " + QcClientState.templateRotation * 90 + " deg");
+		}
+		while (QcKeys.preview.wasPressed()) {
+			QcClientState.blockPreview = !QcClientState.blockPreview;
+			QcClientState.say("QC: block preview " + (QcClientState.blockPreview ? "on" : "off"));
+		}
 	}
 
-	/** Copies the cursor layer into the layer above it, like {@code EditorState.duplicateLayerData}. */
-	private static void duplicateLayer(MinecraftClient client) {
+	/** Undoes the last plan edit. */
+	public static void undo() {
+		QcPlan previous = QcClientState.history.undo(QcClientState.plan);
+		if (previous == null) {
+			QcClientState.say("QC: nothing to undo in the plan");
+			return;
+		}
+		QcClientState.plan = previous;
+		QcClientState.points.clear();
+		QcClientState.changed();
+		QcClientState.say("QC: undo (" + QcClientState.history.undoDepth() + " more)");
+	}
+
+	/** Redoes the last undone plan edit. */
+	public static void redo() {
+		QcPlan next = QcClientState.history.redo(QcClientState.plan);
+		if (next == null) {
+			QcClientState.say("QC: nothing to redo");
+			return;
+		}
+		QcClientState.plan = next;
+		QcClientState.points.clear();
+		QcClientState.changed();
+		QcClientState.say("QC: redo (" + QcClientState.history.redoDepth() + " more)");
+	}
+
+	/** Replaces the plan with an empty one, as one undoable step. */
+	public static void clearPlan() {
+		edit(() -> {
+			if (QcClientState.plan.isEmpty()) {
+				return false;
+			}
+			QcPlan fresh = new QcPlan();
+			fresh.clearMargin = QcClientState.plan.clearMargin;
+			fresh.ground = QcClientState.plan.ground;
+			QcClientState.plan = fresh;
+			return true;
+		});
+	}
+
+	/** Runs an arbitrary plan edit from a screen, as one undoable step. */
+	public static void editFromScreen(java.util.function.BooleanSupplier action) {
+		edit(action);
+	}
+
+	/** Copies the cursor layer (units, masks, roads, clears) into the layer above it. */
+	private static boolean duplicateLayer(MinecraftClient client) {
 		Cursor cursor = cursor(client);
 		if (cursor == null || cursor.layer() < 1) {
-			return;
+			return false;
 		}
-		Map<UnitPos, QcUnit> source = QcClientState.layers.layer(cursor.layer());
-		Map<UnitPos, QcUnit> duplicate = new LinkedHashMap<>();
-		for (Map.Entry<UnitPos, QcUnit> entry : source.entrySet()) {
-			duplicate.put(entry.getKey(), new QcUnit(entry.getValue()));
-		}
-		QcClientState.layers.setLayer(cursor.layer() + 1, duplicate);
-	}
-
-	private static void place(MinecraftClient client, Cursor cursor) {
-		if (cursor.layer() < 1) {
-			QcClientState.say(LAYER_MESSAGE);
-			return;
-		}
-		QcClientState.layers.layer(cursor.layer()).putIfAbsent(placementCell(client, cursor), new QcUnit());
-	}
-
-	private static void erase(Cursor cursor) {
-		Map<UnitPos, QcUnit> layer = QcClientState.layers.peekLayer(cursor.layer());
-		if (layer == null) {
-			return;
-		}
-		for (UnitSide side : UnitSide.values()) {
-			QcUnit neighbour = layer.get(neighbour(cursor.cell(), side));
-			if (neighbour == null) {
+		int layer = cursor.layer();
+		QcPlan plan = QcClientState.plan;
+		QcPlan slice = new QcPlan();
+		for (Cell cell : plan.cells()) {
+			if (cell.layer() != layer) {
 				continue;
 			}
-			setWallFlag(neighbour, opposite(side), false);
-			setGateFlag(neighbour, opposite(side), false);
+			Map<UnitPos, QcUnit> units = plan.units().peekLayer(layer);
+			if (units != null && units.containsKey(cell.pos())) {
+				slice.units().layer(layer).put(cell.pos(), new QcUnit(units.get(cell.pos())));
+				slice.setMask(cell, plan.mask(cell));
+			}
+			if (plan.roads().containsKey(cell)) {
+				slice.roads().put(cell, plan.roads().get(cell));
+			}
+			if (plan.clears().contains(cell)) {
+				slice.clears().add(cell);
+			}
 		}
-		layer.remove(cursor.cell());
+		if (slice.isEmpty()) {
+			return false;
+		}
+		plan.merge(slice.transformed(0, false, false, 0, 1, 0));
+		return true;
 	}
 
-	private static void toggleWall(Cursor cursor, boolean wallState, boolean gate) {
+	/** Sends the whole plan to the server to be built into the world. */
+	public static void apply() {
+		if (!QcClientState.active || QcClientState.anchor == null) {
+			QcClientState.say("QC: enter the editor (G) before applying a plan");
+			return;
+		}
+		if (QcClientState.plan.isEmpty()) {
+			QcClientState.say("QC: the plan is empty");
+			return;
+		}
+		QcPlanTransfer.sendApply(QcClientState.anchor, QcClientState.plan, QcClientState.palette);
+		QcClientState.say("QC: applying plan (" + QcClientState.plan.summary() + ")...");
+	}
+
+	private static boolean toggleWall(Cursor cursor, boolean wallState, boolean gate) {
 		Direction face = cursor.face();
 		UnitSide side = face == null ? null : UnitSide.of(face);
 		if (side == null) {
 			QcClientState.say(FACE_MESSAGE);
-			return;
+			return false;
 		}
-		Map<UnitPos, QcUnit> layer = QcClientState.layers.peekLayer(cursor.layer());
+		Map<UnitPos, QcUnit> layer = QcClientState.plan.units().peekLayer(cursor.layer());
 		QcUnit center = layer == null ? null : layer.get(cursor.cell());
 		QcUnit neighbour = layer == null ? null : layer.get(neighbour(cursor.cell(), side));
 		if (center == null || neighbour == null) {
 			QcClientState.say(PAIR_MESSAGE);
-			return;
+			return false;
 		}
 		if (gate) {
-			if (hasWallFlag(center, side) && hasWallFlag(neighbour, opposite(side))) {
+			if (hasWallFlag(center, side) && hasWallFlag(neighbour, opposite(side))
+					&& (isGateFlag(center, side) != wallState || isGateFlag(neighbour, opposite(side)) != wallState)) {
 				setGateFlag(center, side, wallState);
 				setGateFlag(neighbour, opposite(side), wallState);
+				return true;
 			}
-			return;
+			return false;
+		}
+		if (hasWallFlag(center, side) == wallState && hasWallFlag(neighbour, opposite(side)) == wallState) {
+			return false;
 		}
 		setWallFlag(center, side, wallState);
 		setWallFlag(neighbour, opposite(side), wallState);
+		return true;
 	}
 
 	/** The reported unit the crosshair points at, if it is inside the cursor cell of its layer. */
@@ -290,15 +629,6 @@ public final class QcInteraction {
 		return null;
 	}
 
-	private static void build() {
-		if (!QcClientState.active || QcClientState.anchor == null) {
-			QcClientState.say(NO_UNIT_MESSAGE);
-			return;
-		}
-		ClientPlayNetworking.send(new QcBuildC2S(QcClientState.anchor,
-				LayersCodec.toNbt(QcClientState.layers), PaletteCodec.toNbt(QcClientState.palette)));
-	}
-
 	private static void align(MinecraftClient client) {
 		QcUnitRecord target = crosshairUnit(client);
 		if (target == null) {
@@ -308,14 +638,8 @@ public final class QcInteraction {
 		client.setScreen(new QcAlignScreen(target));
 	}
 
-	/** The cell a placement lands in: the hit block offset by the face, or the air block aimed at. */
-	private static UnitPos placementCell(MinecraftClient client, Cursor cursor) {
-		BlockPos anchor = QcClientState.anchor;
-		BlockPos reference = cursor.blockHit() && client.crosshairTarget instanceof BlockHitResult hit
-				? hit.getBlockPos().offset(cursor.face())
-				: BlockPos.ofFloored(client.crosshairTarget.getPos());
-		return new UnitPos(Math.floorDiv(reference.getX() - anchor.getX(), 8),
-				Math.floorDiv(reference.getZ() - anchor.getZ(), 8));
+	private static boolean isPlacingTool(QcTool tool) {
+		return tool == QcTool.UNITS || tool == QcTool.TEMPLATE;
 	}
 
 	private static boolean modifierDown(MinecraftClient client, int left, int right) {
@@ -324,48 +648,27 @@ public final class QcInteraction {
 	}
 
 	static UnitPos neighbour(UnitPos cell, UnitSide side) {
-		Direction direction = side.toDirection();
-		return new UnitPos(cell.x() + direction.getOffsetX(), cell.z() + direction.getOffsetZ());
+		return Flags.neighbour(cell, side);
 	}
 
 	static UnitSide opposite(UnitSide side) {
-		return UnitSide.of(side.toDirection().getOpposite());
+		return Flags.opposite(side);
 	}
 
 	static boolean hasWallFlag(QcUnit unit, UnitSide side) {
-		return switch (side) {
-			case NORTH -> unit.hasWallN();
-			case EAST -> unit.hasWallE();
-			case SOUTH -> unit.hasWallS();
-			case WEST -> unit.hasWallW();
-		};
+		return Flags.hasWall(unit, side);
 	}
 
 	static boolean isGateFlag(QcUnit unit, UnitSide side) {
-		return switch (side) {
-			case NORTH -> unit.isGateN();
-			case EAST -> unit.isGateE();
-			case SOUTH -> unit.isGateS();
-			case WEST -> unit.isGateW();
-		};
+		return Flags.isGate(unit, side);
 	}
 
 	static void setWallFlag(QcUnit unit, UnitSide side, boolean value) {
-		switch (side) {
-			case NORTH -> unit.setWallN(value);
-			case EAST -> unit.setWallE(value);
-			case SOUTH -> unit.setWallS(value);
-			case WEST -> unit.setWallW(value);
-		}
+		Flags.setWall(unit, side, value);
 	}
 
 	static void setGateFlag(QcUnit unit, UnitSide side, boolean value) {
-		switch (side) {
-			case NORTH -> unit.setGateN(value);
-			case EAST -> unit.setGateE(value);
-			case SOUTH -> unit.setGateS(value);
-			case WEST -> unit.setGateW(value);
-		}
+		Flags.setGate(unit, side, value);
 	}
 
 	/** The world-space origin of a session cell: {@code anchor + 8 * (dx, dy, dz)}. */

@@ -8,7 +8,17 @@ import com.qccore.core.palette.BlockPalette;
 import com.qccore.net.QcPackets.QcAlignC2S;
 import com.qccore.net.QcPackets.QcBuildC2S;
 import com.qccore.net.QcPackets.QcIndexS2C;
+import com.qccore.net.QcPackets.QcPlanC2S;
 import com.qccore.net.QcPackets.QcResultS2C;
+import com.qccore.net.QcPackets.QcUndoC2S;
+import com.qccore.core.nbt.PlanCodec;
+import com.qccore.core.plan.QcPlan;
+import com.qccore.world.QcPlanService;
+import com.qccore.world.QcUndoService;
+import net.minecraft.nbt.NbtIo;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import com.qccore.world.QcAlignService;
 import com.qccore.world.QcBuildService;
 import com.qccore.world.QcUnitIndex;
@@ -45,7 +55,11 @@ public final class QcServerNetworking {
     private static final int PUSH_INTERVAL_TICKS = 40;
     private static final int PUSH_MOVE_DISTANCE = 16;
 
+    /** 256 chunks of 30000 bytes: about 7.5 MB of compressed plan, far beyond any real request. */
+    private static final int MAX_CHUNKS = 256;
+
     private static final Map<UUID, BlockPos> LAST_PUSH = new HashMap<>();
+    private static final Map<UUID, Transfer> TRANSFERS = new HashMap<>();
     private static int tick;
 
     private QcServerNetworking() {
@@ -89,8 +103,24 @@ public final class QcServerNetworking {
                     }
                 }));
 
+        ServerPlayNetworking.registerGlobalReceiver(QcPlanC2S.TYPE, (packet, player, sender) ->
+                player.server.execute(() -> receivePlanChunk(player, packet)));
+
+        ServerPlayNetworking.registerGlobalReceiver(QcUndoC2S.TYPE, (packet, player, sender) ->
+                player.server.execute(() -> {
+                    QcResult result = QcUndoService.undo(player);
+                    ServerPlayNetworking.send(player, new QcResultS2C(result.ok(), result.message()));
+                    if (result.ok()) {
+                        push(player);
+                    }
+                }));
+
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> push(handler.getPlayer()));
-        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> LAST_PUSH.remove(handler.getPlayer().getUuid()));
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            LAST_PUSH.remove(handler.getPlayer().getUuid());
+            TRANSFERS.remove(handler.getPlayer().getUuid());
+            QcUndoService.forget(handler.getPlayer().getUuid());
+        });
 
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             tick++;
@@ -104,6 +134,62 @@ public final class QcServerNetworking {
                 }
             }
         });
+    }
+
+    /**
+     * Collects the chunks of a plan request and runs it once the last chunk arrived. A chunk of
+     * another transfer, or one out of order, restarts the collection.
+     */
+    private static void receivePlanChunk(ServerPlayerEntity player, QcPlanC2S packet) {
+        UUID id = player.getUuid();
+        Transfer transfer = TRANSFERS.get(id);
+        if (packet.index() == 0 || transfer == null || transfer.id != packet.transfer() || transfer.next != packet.index()) {
+            if (packet.index() != 0 || packet.total() < 1 || packet.total() > MAX_CHUNKS) {
+                TRANSFERS.remove(id);
+                ServerPlayNetworking.send(player, new QcResultS2C(false, "the plan request was malformed"));
+                return;
+            }
+            transfer = new Transfer(packet.transfer());
+            TRANSFERS.put(id, transfer);
+        }
+        transfer.bytes.writeBytes(packet.data());
+        transfer.next++;
+        if (transfer.next < packet.total()) {
+            return;
+        }
+        TRANSFERS.remove(id);
+        try {
+            NbtCompound request = NbtIo.readCompressed(new ByteArrayInputStream(transfer.bytes.toByteArray()));
+            String action = request.getString("action");
+            QcPlan plan = PlanCodec.fromNbt(request.getCompound("plan"));
+            BlockPalette palette = PaletteCodec.fromNbt(request.getCompound("palette"));
+            int[] anchor = request.getIntArray("anchor");
+            if (!"apply".equals(action) || anchor.length != 3) {
+                throw new IllegalArgumentException("unknown plan action '" + action + "'");
+            }
+            QcResult result = QcPlanService.apply(player, new BlockPos(anchor[0], anchor[1], anchor[2]), plan, palette);
+            if (!result.ok()) {
+                LOGGER.warn("qccore: plan request from {} refused: {}", player.getName().getString(), result.message());
+            }
+            ServerPlayNetworking.send(player, new QcResultS2C(result.ok(), result.message()));
+            if (result.ok()) {
+                push(player);
+            }
+        } catch (IOException | RuntimeException e) {
+            LOGGER.warn("qccore: rejected plan request from {}: {}", player.getName().getString(), e.toString());
+            ServerPlayNetworking.send(player, new QcResultS2C(false, "the plan request was malformed"));
+        }
+    }
+
+    /** The chunks of one plan request received so far. */
+    private static final class Transfer {
+        private final int id;
+        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        private int next;
+
+        private Transfer(int id) {
+            this.id = id;
+        }
     }
 
     /**

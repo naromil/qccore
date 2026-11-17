@@ -9,6 +9,7 @@
 	"entrypoints": {
 		"fabric-gametest": [
 			"com.qccore.gametest.QcGameTests",
+			"com.qccore.gametest.QcPlanGameTests",
 			"com.qccore.gametest.StructureExportGoldenTest",
 			"com.qccore.gametest.StructureImportGoldenTest",
 			"com.qccore.gametest.PaletteCodecTest"

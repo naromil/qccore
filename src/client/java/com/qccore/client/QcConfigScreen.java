@@ -211,16 +211,19 @@ public class QcConfigScreen extends Screen {
 			row.component().setId(row.field().getText());
 		}
 		applyLatticeSetting();
+		QcClientState.changed();
 		close();
 	}
 
-	/** Replaces the session layout with {@code file} and adopts the palette the import configured. */
+	/** Replaces the plan's units with {@code file} (an undoable step) and adopts the palette the import configured. */
 	public void loadLayout(Path file) {
 		String name = file.getFileName().toString();
 		try {
 			NbtCompound tag = QcSchematics.load(file);
 			UnitLayers imported = UnitBlockConverter.convertBlockMapToLayers(StructureNbt.read(tag), QcClientState.palette);
-			QcClientState.layers = imported;
+			QcClientState.checkpoint();
+			QcClientState.plan.setUnits(imported);
+			QcClientState.changed();
 			if (!QcClientState.active) {
 				QcInteraction.enterEditorMode(this.client);
 			}
