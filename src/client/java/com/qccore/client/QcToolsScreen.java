@@ -27,6 +27,8 @@ public class QcToolsScreen extends Screen {
 	private static final int TOP = 24;
 	private static final int LABEL_COLOR = 0xA0A0A0;
 	private static final int TEXT_COLOR = 0xFFFFFF;
+	private static final String[] SHORT_NAMES = {"framework", "row", "column", "wall", "floor",
+			"inner col.", "inner wall", "gate", "outer wall"};
 
 	private final List<ButtonWidget> maskButtons = new ArrayList<>();
 	private ButtonWidget toolButton;
@@ -219,7 +221,7 @@ public class QcToolsScreen extends Screen {
 				+ QcClientState.modifiers.mirrorCellZ + " (click: cursor cell)"));
 		for (int i = 0; i < this.maskButtons.size(); i++) {
 			boolean on = ComponentMask.has(QcClientState.componentMask, ComponentMask.BITS[i]);
-			this.maskButtons.get(i).setMessage(Text.literal((on ? "§a" : "§8") + ComponentMask.NAMES[i]));
+			this.maskButtons.get(i).setMessage(Text.literal((on ? "§a" : "§8") + SHORT_NAMES[i]));
 		}
 	}
 

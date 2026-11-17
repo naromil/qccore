@@ -1,10 +1,13 @@
 package com.qccore.client;
 
 import com.qccore.core.plan.PlanCompiler;
+import net.minecraft.block.BlockRenderType;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.LightmapTextureManager;
 import net.minecraft.client.render.OverlayTexture;
+import net.minecraft.client.render.TexturedRenderLayers;
+import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.block.BlockRenderManager;
 import net.minecraft.client.util.math.MatrixStack;
@@ -15,13 +18,17 @@ import java.util.Map;
 
 /**
  * Ghost blocks of the plan: the compiled blocks (units with their masks, roads, ground fill) drawn
- * in place, the way Effortless Building previews a placement. Only positions whose world block
+ * translucent in place, the way Effortless Building previews a placement. Only positions whose world block
  * differs are drawn, within {@link #RANGE} blocks of the camera and at most {@link #LIMIT} per
  * frame. The compilation is cached until the plan, the palette or the anchor changes.
  */
 public final class QcBlockPreview {
 	private static final double RANGE = 64.0;
+	/** Opacity of a ghost block, 0..255. */
+	private static final int ALPHA = 110;
 	private static final int LIMIT = 20000;
+	/** Plans touching more cells than this are not compiled for the preview (a 1024-unit plan is ~700k blocks). */
+	private static final int CELL_LIMIT = 1024;
 
 	private static int version = -1;
 	private static BlockPos anchor;
@@ -48,6 +55,11 @@ public final class QcBlockPreview {
 		version = QcClientState.planVersion;
 		anchor = QcClientState.anchor;
 		if (anchor == null || QcClientState.plan.isEmpty()) {
+			blocks = Map.of();
+			problem = null;
+			return;
+		}
+		if (QcClientState.plan.cells().size() > CELL_LIMIT) {
 			blocks = Map.of();
 			problem = null;
 			return;
@@ -81,13 +93,84 @@ public final class QcBlockPreview {
 			}
 			matrices.push();
 			matrices.translate(pos.getX(), pos.getY(), pos.getZ());
-			renderer.renderBlockAsEntity(entry.getValue(), matrices, consumers,
-					LightmapTextureManager.MAX_LIGHT_COORDINATE, OverlayTexture.DEFAULT_UV);
+			BlockState state = entry.getValue();
+			if (state.getRenderType() == BlockRenderType.MODEL) {
+				VertexConsumer ghost = new AlphaConsumer(consumers.getBuffer(TexturedRenderLayers.getEntityTranslucentCull()), ALPHA);
+				int color = client.getBlockColors().getColor(state, null, null, 0);
+				renderer.getModelRenderer().render(matrices.peek(), ghost, state, renderer.getModel(state),
+						(color >> 16 & 255) / 255.0F, (color >> 8 & 255) / 255.0F, (color & 255) / 255.0F,
+						LightmapTextureManager.MAX_LIGHT_COORDINATE, OverlayTexture.DEFAULT_UV);
+			} else {
+				renderer.renderBlockAsEntity(state, matrices, consumers,
+						LightmapTextureManager.MAX_LIGHT_COORDINATE, OverlayTexture.DEFAULT_UV);
+			}
 			matrices.pop();
 			if (++drawn >= LIMIT) {
 				break;
 			}
 		}
 		consumers.draw();
+	}
+
+	/** Passes every vertex through, with a fixed alpha: the ghost look on the translucent block-atlas layer. */
+	private static final class AlphaConsumer implements VertexConsumer {
+		private final VertexConsumer delegate;
+		private final int alpha;
+
+		AlphaConsumer(VertexConsumer delegate, int alpha) {
+			this.delegate = delegate;
+			this.alpha = alpha;
+		}
+
+		@Override
+		public VertexConsumer vertex(double x, double y, double z) {
+			this.delegate.vertex(x, y, z);
+			return this;
+		}
+
+		@Override
+		public VertexConsumer color(int red, int green, int blue, int ignored) {
+			this.delegate.color(red, green, blue, this.alpha);
+			return this;
+		}
+
+		@Override
+		public VertexConsumer texture(float u, float v) {
+			this.delegate.texture(u, v);
+			return this;
+		}
+
+		@Override
+		public VertexConsumer overlay(int u, int v) {
+			this.delegate.overlay(u, v);
+			return this;
+		}
+
+		@Override
+		public VertexConsumer light(int u, int v) {
+			this.delegate.light(u, v);
+			return this;
+		}
+
+		@Override
+		public VertexConsumer normal(float x, float y, float z) {
+			this.delegate.normal(x, y, z);
+			return this;
+		}
+
+		@Override
+		public void next() {
+			this.delegate.next();
+		}
+
+		@Override
+		public void fixedColor(int red, int green, int blue, int ignored) {
+			this.delegate.fixedColor(red, green, blue, this.alpha);
+		}
+
+		@Override
+		public void unfixColor() {
+			this.delegate.unfixColor();
+		}
 	}
 }

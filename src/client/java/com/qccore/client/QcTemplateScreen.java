@@ -55,12 +55,12 @@ public class QcTemplateScreen extends Screen {
 		this.addDrawableChild(ButtonWidget.builder(Text.literal("Delete selected"), b -> delete())
 				.dimensions(x, y, 148, 20).build());
 		y += 44;
-		this.nameField = new TextFieldWidget(this.textRenderer, x, y, 196, 20, Text.literal("name"));
+		this.nameField = new TextFieldWidget(this.textRenderer, x, y, 176, 20, Text.literal("name"));
 		this.nameField.setMaxLength(64);
 		this.nameField.setText(QcClientState.templateName.isEmpty() ? "qc_template" : QcClientState.templateName);
 		this.addDrawableChild(this.nameField);
 		this.addDrawableChild(ButtonWidget.builder(Text.literal("Save plan as template"), b -> save())
-				.dimensions(x + 200, y, 100, 20).build());
+				.dimensions(x + 180, y, 120, 20).build());
 		this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.client.setScreen(this.parent))
 				.dimensions(this.width / 2 - 50, this.height - 28, 100, 20).build());
 		refresh();
@@ -72,9 +72,9 @@ public class QcTemplateScreen extends Screen {
 		context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 8, TEXT_COLOR);
 		context.drawCenteredTextWithShadow(this.textRenderer, QcTemplates.dir().toAbsolutePath().toString(),
 				this.width / 2, 24, MUTED_COLOR);
-		context.drawTextWithShadow(this.textRenderer, "saves units, flags, component masks, roads and cleared cells, plus the palette",
+		context.drawTextWithShadow(this.textRenderer, "saves units, flags, masks, roads, clears + the palette",
 				this.width / 2 - 150, 124, MUTED_COLOR);
-		context.drawTextWithShadow(this.textRenderer, "stamp with the template tool; R turns it a quarter, the modifiers repeat/mirror it",
+		context.drawTextWithShadow(this.textRenderer, "R turns it a quarter; array and mirror repeat it",
 				this.width / 2 - 150, 176, MUTED_COLOR);
 		if (!this.footer.isEmpty()) {
 			context.drawCenteredTextWithShadow(this.textRenderer, this.footer, this.width / 2, this.height - 44,

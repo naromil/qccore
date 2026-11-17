@@ -2,8 +2,11 @@
 
 QCCore is a **Fabric 1.20.1 mod** (mod id `qccore`, package root `com.qccore`) that ports the QCSimple desktop
 pipeline into an in-world editor: players configure the nine QC Unit components from `<gameDir>/schematics`, build a
-multi-layer layout with the crosshair (keybinds + a translucent overlay), then save it as a vanilla structure `.nbt`
-or, in creative, build it into the world and re-align whole buildings to `(8x+a, 8y+b, 8z+c)`.
+multi-layer **plan** with the crosshair (Effortless-Building-style tools and shapes, keybinds, wireframes and ghost
+blocks), then export it as a vanilla structure `.nbt` or, in creative, apply it to the world in one undoable step and
+re-align whole buildings to `(8x+a, 8y+b, 8z+c)`. The QC building rules come from the user's `naromil/worldedit`
+repo (`builds/QCSYSTEM.md`, the `quarterchunk-buildings` skill, `quarterchunk/qckit/`); the road template is a port
+of qckit's `road.py`.
 
 `QCCORE_IN_WORLD_QC_UNIT_EDITOR_PLAN.md` (repo root) is the **spec/design document of record**: ordered steps, the
 1.20.1/yarn API facts the code relies on, every user-visible failure message and the verification procedure.
@@ -12,8 +15,18 @@ types is the third source. Read all three before changing behaviour.
 
 ## Project Overview
 
-- **Purpose:** replace the QCSimple JavaFX canvas with crosshair editing. There is no 2D editor screen; the only GUI
-  is the four IO/config screens (`QcConfigScreen`, `QcFileBrowserScreen`, `QcSaveScreen`, `QcAlignScreen`).
+- **Purpose:** replace the QCSimple JavaFX canvas with crosshair editing. There is no 2D editor screen; the GUI is
+  the IO/config screens (`QcConfigScreen`, `QcFileBrowserScreen`, `QcSaveScreen`, `QcAlignScreen`) plus the planning
+  screens (`QcToolsScreen` hub on B, `QcTemplateScreen`, `QcKitScreen`).
+- **Plan model (`core/plan/`):** `QcPlan` = units (`UnitLayers`) + per-unit `ComponentMask` (absent = all nine) +
+  cleared cells (`clearMargin` 0..4, optional `ground` fill of the floor plane) + road cells naming a `RoadStyle`
+  (lanes 1..4, joint, over, post, medallion, centre; ids may carry states, parsed by `BlockIds`). `BuildShape`
+  (single/line/floor/ring/box/hollow box) and `Modifiers` (array then mirror) produce `Cell(x, layer, z)` sets;
+  `QcPlan.transformed/normalized/merge` rotate/mirror/move plans with their flags (templates). `PlanCompiler` is the
+  one plan -> blocks conversion (server apply, client ghost preview, `.nbt` export): masked `UnitExporter.export`,
+  then `RoadKit` per layer (gives way to unit blocks, `putIfAbsent`), then clears + 7 blocks of road headroom as air,
+  then ground. `PlanCodec` is the wire/file format. All of `core/plan` except `BlockIds`/`PlanCompiler` is
+  registry-free and JUnit-tested.
 - **Domain:** a **QC Unit** is a 9x9x9 block cell with a 7x7x7 interior. Units are spaced **8 blocks apart** on every
   axis, so neighbours *share* the boundary plane (local `0` of one unit is local `8` of the next); unit origins
   satisfy `x = 8*dx + anchorX` (same for `y`, `z`) and unit-local `(x, y, z)` lands at `absX = dx*8 + x`,
@@ -76,21 +89,31 @@ Server/client split:
   the records. Both return `QcResult(ok, message)`, both run on the server thread - receivers hop with
   `player.server.execute(...)`, client receivers with `MinecraftClient.getInstance().execute(...)`.
 - `QcWorldOps` is the **only world-write seam**: `clearFootprint` (9x9x9 cell plus a 2-block shell outside every
-  exposed face), `placeBlocks`, `fits`, writing with `Block.NOTIFY_ALL | Block.FORCE_STATE` and skipping positions
-  outside `World.isValid`/the height limits.
+  exposed face), `placeBlocks`, `clearBlocks`, `fillAir` (only replaceable blocks), `restore`, `fits`, writing with
+  `Block.NOTIFY_ALL | Block.FORCE_STATE` and skipping positions outside `World.isValid`/the height limits. Every
+  write method has an overload taking an undo map (first previous state per position).
+- `QcPlanService.apply` (creative, `validate`, compile, fit check) writes clears -> footprint of **full-mask units
+  only** (partial units add to what stands) -> blocks -> ground, registers index records and pushes a
+  `QcUndoService` entry (per player, in memory, 10 entries / 1.5M blocks, block-entity contents not restored;
+  `/qc undo` or `QcUndoC2S`). Plans travel as gzip NBT split into `QcPlanC2S` chunks of 30000 bytes (vanilla caps
+  a C2S payload at 32767), reassembled per player in `QcServerNetworking`.
 - `QcUnitIndex extends PersistentState`, state id `qccore_units`, holding
   `Map<Identifier dimension, LinkedHashMap<BlockPos origin, QcUnitRecord>>`. `QcServerNetworking` pushes every unit
   within 128 blocks of a player (nearest first, capped 4096) on join, after a successful build/align, and every 40
   ticks once the player moved 16 blocks.
 - `QcClientState` is the static single-session state (`active`, `overlayVisible`, `anchor`, `alignA/B/C`, `layers`,
-  `palette`, `nearbyUnits`, `dimension`, `message`), read by the renderer, HUD, screens and keybinds. `QcKeys` holds
-  the eight keybinds (G editor, Y re-anchor, H duplicate layer, J save, K build, I components, U align, O overlay) in
-  category `key.categories.qccore`. Input arrives through `client/mixin/MinecraftClientMixin`, which cancels
+  `palette`, `nearbyUnits`, `dimension`, `message`) plus the planning state (`plan`, `planVersion`, `history`, `tool`,
+  `shape`, `points`, `componentMask`, `modifiers`, `roadStyle(s)`, `template*`, `blockPreview`), read by the renderer,
+  HUD, screens and keybinds. Every plan edit goes through `QcInteraction.edit` (snapshot, run, push to `QcHistory`
+  only if it changed, bump `planVersion`). `QcKeys` holds fourteen keybinds (G editor, Y re-anchor, H duplicate
+  layer, J export, K apply, I components, U align, O overlay, B tools, V shape, N tool, Z undo/Shift redo, R turn
+  template, M ghosts) in category `key.categories.qccore`. Input arrives through `client/mixin/MinecraftClientMixin`, which cancels
   `doAttack`/`doItemUse` at `HEAD` while a session is active and no screen is open, forwarding to
   `QcInteraction.click(...)`.
 
-Four packets in `net/QcPackets`, all `FabricPacket` records whose `PacketType`s are built in static initialisers:
-`QcBuildC2S` (`qccore:build`), `QcAlignC2S` (`qccore:align`), `QcIndexS2C` (`qccore:index`) and
+Six packets in `net/QcPackets`, all `FabricPacket` records whose `PacketType`s are built in static initialisers:
+`QcBuildC2S` (`qccore:build`, kept for compatibility; the K key now sends a plan), `QcAlignC2S` (`qccore:align`),
+`QcPlanC2S` (`qccore:plan`), `QcUndoC2S` (`qccore:undo`), `QcIndexS2C` (`qccore:index`) and
 `QcResultS2C` (`qccore:result`). Wire formats:
 
 | Codec | Shape |
@@ -98,6 +121,9 @@ Four packets in `net/QcPackets`, all `FabricPacket` records whose `PacketType`s 
 | `core/nbt/LayersCodec` | `{"layers":[{"y":<int>,"units":[{"x":<int>,"z":<int>,"w":<byte>,"g":<byte>},…]},…]}`, layers ascending |
 | `core/nbt/PaletteCodec` | `{"framework","row","column","wall","floor":<String id>, "innerWall"\|"gate"\|"outerWall"\|"innerColumn":<structure tag, omitted when empty>}` |
 | `world/QcUnitRecord` | `{"pos":[x,y,z],"w":<byte>,"g":<byte>}`; `QcIndexS2C` wraps a list of them as `{"units":[record, …]}` |
+| `core/nbt/PlanCodec` | `{"units":LayersCodec,"masks":[{x,y,z,m}],"clears":[{x,y,z}],"clearMargin","ground","roads":[{x,y,z,s}],"roadStyles":{name:style}}`, `y` = layer |
+| `QcPlanC2S` request | gzip of `{"action":"apply","anchor":[x,y,z],"plan":PlanCodec,"palette":PaletteCodec}` |
+| templates / kits | `<gameDir>/qccore/templates/<name>.qct.nbt` = gzip `{"qcTemplate":1,"plan","palette"}` (plan normalised to min cell `(0,1,0)`); `<gameDir>/qccore/kits/<name>.json` = palette ids + structure file names, road styles, ground |
 | `core/nbt/StructureNbt` | `{DataVersion,size,palette,blocks,entities}`; `size` and each `pos` are int **lists**, both list and int-array form are read |
 
 Bit layout of `w`/`g`, identical in `LayersCodec`, `QcUnitRecord` and `QcOverlayRenderer`:
@@ -117,8 +143,9 @@ Bit layout of `w`/`g`, identical in `LayersCodec`, `QcUnitRecord` and `QcOverlay
 | `src/client/java/com/qccore/client/` | session, keybinds, crosshair interaction, overlay, HUD, four screens, `QcSchematics` |
 | `src/client/java/com/qccore/client/mixin/` | `MinecraftClientMixin` (the only client mixin) |
 | `src/client/resources/` | `qccore.client.mixins.json` (the only file) |
-| `src/test/java/com/qccore/core/` | 14 JUnit tests over registry-free logic |
-| `src/gametest/java/com/qccore/gametest/` | 7 gametests plus `TestFixtures` (fixtures + golden plumbing) |
+| `src/main/java/com/qccore/core/plan/` | the plan model: `QcPlan`, `Cell`, `BuildShape`, `Modifiers`, `ComponentMask`, `Flags`, `RoadStyle`, `RoadKit`, `BlockIds`, `PlanCompiler` |
+| `src/test/java/com/qccore/core/` | 29 JUnit tests over registry-free logic (`plan/` holds the shape, plan and road tests) |
+| `src/gametest/java/com/qccore/gametest/` | 9 gametests plus `TestFixtures` (fixtures + golden plumbing) |
 | `src/gametest/resources/` | the `qccore-gametest` mod metadata and `golden/unit-{export,import}-baseline.txt` |
 
 The `client` source set exists so client-only Minecraft classes are absent from the server; new client-only code under
@@ -128,8 +155,8 @@ The `client` source set exists so client-only Minecraft classes are absent from 
 
 ```bash
 ./gradlew build               # compile all source sets, test + runGameTest through check, then remapJar
-./gradlew test                # the 14 JUnit tests: no game, no block registry
-./gradlew runGameTest         # the 7 gametests in a real dev server world, ending "All 7 required tests passed :)"
+./gradlew test                # the 29 JUnit tests: no game, no block registry
+./gradlew runGameTest         # the 9 gametests in a real dev server world, ending "All 9 required tests passed :)"
 ./gradlew runClient           # dev client with the mod loaded (needs a display)
 ./gradlew runServer           # dev dedicated server; /qc works from its console
 ./gradlew compileClientJava   # compile the client source set only
@@ -195,6 +222,11 @@ dumps of a failing golden test). Loom's wiring adds `acceptGameTestEula`/`delete
   outerWall`) is the export contract the golden baselines pin.
 - **`put` overwrites, `putIfAbsent` keeps.** The split decides which component wins a contested voxel; turning a
   ported `putIfAbsent` into `put` silently changes the output.
+- **Component masks must not change the plain export.** `UnitExporter.export(layers, palette, origin)` delegates to
+  the masked overload with `ComponentMask.ALL`, which calls every component in the same order; the golden tests pin it.
+- **Roads own only the 7-wide interior plus arm mouths** (QCSYSTEM.md): never the four corner posts or a closed
+  plane, and they give way to unit blocks. Keep `RoadKit` a faithful port of qckit `road.py`; there are no preset road
+  styles or kits, by the user's rule ("no default blocks").
 - **Never re-pin a golden baseline to make a test pass.** A mismatch means the port diverged; fix the port. The
   baselines are byte-identical to QCSimple's (md5 `da86e79397e1162f8a5b4455d8cd1ef6` export,
   `6dfe109a2dd0e028f24b64134a906a86` import).
@@ -249,8 +281,8 @@ touching `Registries.BLOCK` is a gametest instead.
 
 | Suite | Files | Covers |
 |---|---|---|
-| JUnit, 14 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest` | lattice math and residues; the index NBT round trip plus malformed state; the `w`/`g` bit layout and a playlist round trip |
-| Gametests, 7 tests | `QcGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, an align moves the building, layer 0 and non-creative are refused |
+| JUnit, 29 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest`, `plan/BuildShapeTest`, `plan/QcPlanTest`, `plan/RoadKitTest` | lattice math and residues; the index NBT round trip plus malformed state; the `w`/`g` bit layout and a playlist round trip; shapes and modifiers; partitions, rotation/mirror of flags, normalise/merge, `PlanCodec` round trip; the road contract (7 wide, lanes, joints, corner posts, medallion, plaza post, give-way) |
+| Gametests, 9 tests | `QcGameTests`, `QcPlanGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, an align moves the building, layer 0 and non-creative are refused; a plan (full unit, framework-only unit, cleared cell, road) applies and `/qc undo` restores every block and record; plan refusals are user-visible |
 
 Golden mechanics: baselines are **classpath resources** (`/golden/unit-export-baseline.txt`) inside the test mod,
 so they never reach the shipped jar; comparison is exact, order-sensitive line equality after CRLF/CR -> LF
@@ -261,8 +293,9 @@ an extracted tag is not deterministic. The game-test world is not recreated betw
 `QcGameTests.clearIndexArea` clears the test area's index records first. A JUnit XML report comes from
 `-Dfabric-api.gametest.report-file=<file>`.
 
-**Not covered:** the four screens, `QcInteraction`, `QcOverlayRenderer`, `QcHud`, `QcSchematics`, the push loop, the
-`/qc` output and the input mixin have no automated tests, and `QcGameTests` does not cover erase or wall-flag editing.
+**Not covered:** the screens, `QcInteraction` (tools, shapes, the box height ray), `QcHistory`, `QcOverlayRenderer`,
+`QcBlockPreview`, `QcHud`, `QcSchematics`, `QcTemplates`, `QcKits`, the chunked transfer, the push loop, the `/qc`
+output and the input mixin have no automated tests, and `QcGameTests` does not cover erase or wall-flag editing.
 
 **Verified project state (evidence behind this file):** export and import dumps byte-identical to the baselines,
 `./gradlew test` 14/14, `./gradlew runGameTest` 7/7, plus a client smoke in a creative world (editor HUD verbatim,
@@ -273,6 +306,15 @@ headless dedicated-server smoke (`qc info` -> `0 QC unit(s) in minecraft:overwor
 The test/gametest counts and the `All 7 required tests passed :)` line were re-checked against `build/test-results/`
 and `build/run/gameTest/logs/latest.log` while writing this file; the two smoke transcripts themselves were not
 re-executed. `[INFERENCE from the code; not executed]`
+
+**Planning tools client smoke (2026-11-17, Xvfb + xdotool, creative superflat world via
+`runClient --args="--quickPlaySingleplayer qc"`):** a floor shape planned 2 units with translucent ghost blocks; K was
+refused on bedrock ("the plan does not fit inside this world's height"), then after Y applied 2 units / 1150 blocks
+through the chunked packet; "Undo last apply" restored all 1150; the kit screen validated ids green and the road tool
+with a 3-copy array applied 3 units + 3 road cells (1686 blocks); J exported a sparse `.nbt` with the road blocks;
+a template saved to `run/qccore/templates/` and stamped rotated 90 deg with the array (10 units, 9 road cells). The
+xdotool mouse cannot turn the camera (raw input), so shapes were only exercised from one aim; the box height ray,
+mirrors and partition tools are unexercised in a client.
 
 **Manual checklist (human required):** wall and gate plates on a shared face (blue, then green with Ctrl), a second
 layer placed 8 blocks up, `H` duplicating a layer, `Y` re-anchoring, the `U` align screen moving a placed building,

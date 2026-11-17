@@ -24,7 +24,9 @@ public class QcKitScreen extends Screen {
 	private static final int MUTED_COLOR = 0x808080;
 	private static final int ERROR_COLOR = 0xFF5555;
 	private static final int VALID_COLOR = 0x55FF55;
-	private static final int LANE_WIDTH = 66;
+	private static final int LANE_WIDTH = 82;
+	private static final int LABEL_WIDTH = 66;
+	private static final int FIELDS_TOP = 80;
 
 	private final Screen parent;
 	private List<String> kits = List.of();
@@ -55,47 +57,48 @@ public class QcKitScreen extends Screen {
 	@Override
 	protected void init() {
 		this.kits = QcKits.list();
-		int x = this.width / 2 - 170;
-		int y = 22;
-		this.addDrawableChild(ButtonWidget.builder(Text.literal("<"), b -> stepKit(-1)).dimensions(x, y, 20, 20).build());
-		this.kitButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> stepKit(1)).dimensions(x + 22, y, 176, 20).build());
-		this.addDrawableChild(ButtonWidget.builder(Text.literal(">"), b -> stepKit(1)).dimensions(x + 200, y, 20, 20).build());
-		this.addDrawableChild(ButtonWidget.builder(Text.literal("Load kit"), b -> loadKit()).dimensions(x + 224, y, 116, 20).build());
-		y += 22;
-		this.kitName = new TextFieldWidget(this.textRenderer, x, y, 220, 20, Text.literal("kit"));
+		int x = this.width / 2 - 205;
+		int y = 18;
+		this.addDrawableChild(ButtonWidget.builder(Text.literal("<"), b -> stepKit(-1)).dimensions(x, y, 16, 20).build());
+		this.kitButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> stepKit(1)).dimensions(x + 18, y, 118, 20).build());
+		this.addDrawableChild(ButtonWidget.builder(Text.literal(">"), b -> stepKit(1)).dimensions(x + 138, y, 16, 20).build());
+		this.addDrawableChild(ButtonWidget.builder(Text.literal("Load kit"), b -> loadKit()).dimensions(x + 158, y, 74, 20).build());
+		this.kitName = new TextFieldWidget(this.textRenderer, x + 240, y, 92, 20, Text.literal("kit"));
 		this.kitName.setMaxLength(64);
 		this.kitName.setText(this.kits.isEmpty() ? "my_kit" : this.kits.get(0));
 		this.addDrawableChild(this.kitName);
-		this.addDrawableChild(ButtonWidget.builder(Text.literal("Save kit"), b -> saveKit()).dimensions(x + 224, y, 116, 20).build());
+		this.addDrawableChild(ButtonWidget.builder(Text.literal("Save kit"), b -> saveKit()).dimensions(x + 336, y, 74, 20).build());
 
-		y += 34;
-		this.addDrawableChild(ButtonWidget.builder(Text.literal("<"), b -> stepStyle(-1)).dimensions(x, y, 20, 20).build());
-		this.styleButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> stepStyle(1)).dimensions(x + 22, y, 176, 20).build());
-		this.addDrawableChild(ButtonWidget.builder(Text.literal(">"), b -> stepStyle(1)).dimensions(x + 200, y, 20, 20).build());
-		this.styleName = new TextFieldWidget(this.textRenderer, x + 224, y, 64, 20, Text.literal("style"));
+		y += 24;
+		this.addDrawableChild(ButtonWidget.builder(Text.literal("<"), b -> stepStyle(-1)).dimensions(x, y, 16, 20).build());
+		this.styleButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> stepStyle(1)).dimensions(x + 18, y, 118, 20).build());
+		this.addDrawableChild(ButtonWidget.builder(Text.literal(">"), b -> stepStyle(1)).dimensions(x + 138, y, 16, 20).build());
+		this.styleName = new TextFieldWidget(this.textRenderer, x + 240, y, 92, 20, Text.literal("style"));
 		this.styleName.setMaxLength(32);
 		this.styleName.setText("street");
 		this.addDrawableChild(this.styleName);
-		this.addDrawableChild(ButtonWidget.builder(Text.literal("New"), b -> newStyle()).dimensions(x + 290, y, 50, 20).build());
-		y += 24;
-		int lanes = x + 60;
+		this.addDrawableChild(ButtonWidget.builder(Text.literal("New style"), b -> newStyle()).dimensions(x + 336, y, 74, 20).build());
+		y = FIELDS_TOP;
+		int lanes = x + LABEL_WIDTH;
 		for (int i = 0; i < RoadStyle.LANES; i++) {
-			this.floor[i] = lane(lanes + i * (LANE_WIDTH + 4), y);
-			this.joint[i] = lane(lanes + i * (LANE_WIDTH + 4), y + 22);
-			this.over[i] = lane(lanes + i * (LANE_WIDTH + 4), y + 44);
-			this.post[i] = lane(lanes + i * (LANE_WIDTH + 4), y + 66);
+			int laneX = lanes + i * (LANE_WIDTH + 4);
+			this.floor[i] = lane(laneX, y);
+			this.joint[i] = lane(laneX, y + 22);
+			this.over[i] = lane(laneX, y + 44);
+			this.post[i] = lane(laneX, y + 66);
 		}
 		this.medallion = lane(lanes, y + 88);
 		this.medallion.setWidth(2 * LANE_WIDTH + 4);
 		this.centre = lane(lanes + 2 * (LANE_WIDTH + 4), y + 88);
 		this.centre.setWidth(2 * LANE_WIDTH + 4);
-		this.addDrawableChild(ButtonWidget.builder(Text.literal("Lay this style with the road tool"), b -> useStyle())
-				.dimensions(x, y + 114, 340, 20).build());
 
+		int bottom = this.height - 24;
+		this.addDrawableChild(ButtonWidget.builder(Text.literal("Lay this style with the road tool"), b -> useStyle())
+				.dimensions(x, bottom, 300, 20).build());
 		this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> {
 			storeStyle();
 			this.client.setScreen(this.parent);
-		}).dimensions(this.width / 2 - 50, this.height - 26, 100, 20).build());
+		}).dimensions(x + 310, bottom, 100, 20).build());
 		refreshKit();
 		loadStyleFields();
 	}
@@ -104,15 +107,13 @@ public class QcKitScreen extends Screen {
 	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
 		this.renderBackground(context);
 		context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 6, TEXT_COLOR);
-		int x = this.width / 2 - 170;
-		int y = 102;
-		context.drawTextWithShadow(this.textRenderer, "road style (lane 1 = at a building face ... lane 4 = axis)", x, 68, LABEL_COLOR);
-		String[] labels = {"floor *", "joint", "over (y1)", "post", "medallion"};
+		int x = this.width / 2 - 205;
+		context.drawTextWithShadow(this.textRenderer, "lane 1 = at a building face ... lane 4 = on the axis;  joint = every 8 blocks",
+				x, FIELDS_TOP - 11, MUTED_COLOR);
+		String[] labels = {"floor *", "joint", "over (y1)", "post a,b,..", "medal./ctr."};
 		for (int i = 0; i < labels.length; i++) {
-			context.drawTextWithShadow(this.textRenderer, labels[i], x, y + 6 + i * 22, LABEL_COLOR);
+			context.drawTextWithShadow(this.textRenderer, labels[i], x, FIELDS_TOP + 6 + i * 22, LABEL_COLOR);
 		}
-		context.drawTextWithShadow(this.textRenderer, "joint = every 8 blocks on the transverse planes; post = ids bottom-up, comma separated;"
-				+ " centre = right half of the last row", x, y + 138, MUTED_COLOR);
 		for (TextFieldWidget[] row : new TextFieldWidget[][]{this.floor, this.joint, this.over}) {
 			for (TextFieldWidget field : row) {
 				colour(field);
@@ -121,7 +122,7 @@ public class QcKitScreen extends Screen {
 		colour(this.medallion);
 		colour(this.centre);
 		if (!this.footer.isEmpty()) {
-			context.drawCenteredTextWithShadow(this.textRenderer, this.footer, this.width / 2, this.height - 40,
+			context.drawCenteredTextWithShadow(this.textRenderer, this.footer, this.width / 2, this.height - 36,
 					this.footerError ? ERROR_COLOR : TEXT_COLOR);
 		}
 		super.render(context, mouseX, mouseY, delta);

@@ -111,6 +111,14 @@ class QcPlanTest {
         assertEquals(ComponentMask.ALL, plan.mask(new Cell(0, 1, 0)));
         assertTrue(plan.clears().contains(new Cell(4, 1, 4)));
         assertEquals("a", plan.roadStyles().get("s").floor[0]);
+
+        QcPlan road = new QcPlan();
+        road.roads().put(new Cell(0, 1, 0), "s");
+        plan.merge(road);
+        assertFalse(plan.hasUnit(new Cell(0, 1, 0)), "a merged road replaces the unit in its cell");
+        plan.merge(other);
+        assertTrue(plan.hasUnit(new Cell(0, 1, 0)));
+        assertFalse(plan.roads().containsKey(new Cell(0, 1, 0)), "a merged unit replaces the road in its cell");
     }
 
     @Test

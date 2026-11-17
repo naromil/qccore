@@ -236,9 +236,10 @@ public final class QcPlan {
     }
 
     /**
-     * Merges another plan into this one: its units overwrite units in the same cell (with their
-     * flags and masks), its clears and roads are added, its road styles are added unless a style of
-     * that name exists. Units placed next to existing ones keep the existing partitions.
+     * Merges another plan into this one: its units overwrite units and roads in the same cell (with
+     * their flags and masks), its roads overwrite units and roads in the same cell, its clears are
+     * added, its road styles are added unless a style of that name exists. A cell is a unit or a road,
+     * never both. Units placed next to existing ones keep the existing partitions.
      */
     public void merge(QcPlan other) {
         for (int layer : other.units.layerKeys()) {
@@ -246,10 +247,16 @@ public final class QcPlan {
                 Cell cell = Cell.of(entry.getKey(), layer);
                 units.layer(layer).put(entry.getKey(), new QcUnit(entry.getValue()));
                 setMask(cell, other.mask(cell));
+                roads.remove(cell);
             }
         }
         clears.addAll(other.clears);
-        roads.putAll(other.roads);
+        for (Map.Entry<Cell, String> entry : other.roads.entrySet()) {
+            if (hasUnit(entry.getKey()) && !other.hasUnit(entry.getKey())) {
+                removeUnit(entry.getKey());
+            }
+            roads.put(entry.getKey(), entry.getValue());
+        }
         for (Map.Entry<String, RoadStyle> entry : other.roadStyles.entrySet()) {
             roadStyles.putIfAbsent(entry.getKey(), entry.getValue().copy());
         }
