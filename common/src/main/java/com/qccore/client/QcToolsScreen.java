@@ -4,6 +4,7 @@ import com.qccore.core.plan.Cell;
 import com.qccore.core.plan.ComponentMask;
 import com.qccore.core.plan.Modifiers;
 import com.qccore.core.plan.QcPlan;
+import com.qccore.net.QcPackets.QcRedoC2S;
 import com.qccore.net.QcPackets.QcUndoC2S;
 import com.qccore.platform.QcPlatform;
 import net.minecraft.client.gui.GuiGraphics;
@@ -137,11 +138,15 @@ public class QcToolsScreen extends Screen {
 			QcInteraction.redo();
 		}).bounds(left + 102, bottom, 98, 20).build());
 		this.addRenderableWidget(Button.builder(Component.literal("Clear plan"), b -> QcInteraction.clearPlan())
-				.bounds(right, bottom, 98, 20).build());
-		this.addRenderableWidget(Button.builder(Component.literal("Undo last apply"), b -> {
+				.bounds(right, bottom, 65, 20).build());
+		this.addRenderableWidget(Button.builder(Component.literal("Undo apply"), b -> {
 			QcPlatform.sendToServer(new QcUndoC2S());
 			onClose();
-		}).bounds(right + 102, bottom, 98, 20).build());
+		}).bounds(right + 67, bottom, 65, 20).build());
+		this.addRenderableWidget(Button.builder(Component.literal("Redo apply"), b -> {
+			QcPlatform.sendToServer(new QcRedoC2S());
+			onClose();
+		}).bounds(right + 134, bottom, 66, 20).build());
 		bottom += ROW;
 		this.addRenderableWidget(Button.builder(Component.literal("Apply plan to world"), b -> {
 			commit();

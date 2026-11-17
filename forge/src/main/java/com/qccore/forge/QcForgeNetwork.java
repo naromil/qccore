@@ -24,7 +24,7 @@ import java.util.function.Supplier;
  */
 public final class QcForgeNetwork {
 
-	private static final String PROTOCOL = "1";
+	private static final String PROTOCOL = "2";
 
 	private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(QCCore.id("main"),
 			() -> PROTOCOL, PROTOCOL::equals, PROTOCOL::equals);

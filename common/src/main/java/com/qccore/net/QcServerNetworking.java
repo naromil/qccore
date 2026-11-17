@@ -10,6 +10,7 @@ import com.qccore.net.QcPackets.QcBuildC2S;
 import com.qccore.net.QcPackets.QcIndexS2C;
 import com.qccore.net.QcPackets.QcPlanC2S;
 import com.qccore.net.QcPackets.QcResultS2C;
+import com.qccore.net.QcPackets.QcRedoC2S;
 import com.qccore.net.QcPackets.QcUndoC2S;
 import com.qccore.core.nbt.PlanCodec;
 import com.qccore.core.plan.QcPlan;
@@ -18,10 +19,13 @@ import com.qccore.world.QcUndoService;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import java.io.DataInputStream;
+import java.util.zip.GZIPInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -58,6 +62,13 @@ public final class QcServerNetworking {
     /** 256 chunks of 30000 bytes: about 7.5 MB of compressed plan, far beyond any real request. */
     private static final int MAX_CHUNKS = 256;
 
+    /**
+     * Heap the decoded plan request may claim, as counted by {@link NbtAccounter}. A plan at
+     * every limit (4096 units, 4096 cleared and 4096 road cells, four component structures) stays
+     * well below it, while a small gzip stream that inflates to gigabytes is cut off.
+     */
+    private static final long MAX_PLAN_NBT_BYTES = 32L * 1024 * 1024;
+
     private static final Map<UUID, BlockPos> LAST_PUSH = new HashMap<>();
     private static final Map<UUID, Transfer> TRANSFERS = new HashMap<>();
     private static int tick;
@@ -78,6 +89,12 @@ public final class QcServerNetworking {
             receivePlanChunk(player, chunk);
         } else if (packet instanceof QcUndoC2S) {
             QcResult result = QcUndoService.undo(player);
+            send(player, new QcResultS2C(result.ok(), result.message()));
+            if (result.ok()) {
+                push(player);
+            }
+        } else if (packet instanceof QcRedoC2S) {
+            QcResult result = QcUndoService.redo(player);
             send(player, new QcResultS2C(result.ok(), result.message()));
             if (result.ok()) {
                 push(player);
@@ -152,28 +169,42 @@ public final class QcServerNetworking {
 
     /**
      * Collects the chunks of a plan request and runs it once the last chunk arrived. A chunk of
-     * another transfer, or one out of order, restarts the collection.
+     * another transfer, one out of order or one announcing a different total restarts the collection
+     * (and is refused unless it is a valid first chunk); the remaining chunks of a refused transfer
+     * are dropped without another reply. A player out of creative is refused at the first chunk,
+     * before anything is buffered.
      */
     private static void receivePlanChunk(ServerPlayer player, QcPlanC2S packet) {
         UUID id = player.getUUID();
         Transfer transfer = TRANSFERS.get(id);
-        if (packet.index() == 0 || transfer == null || transfer.id != packet.transfer() || transfer.next != packet.index()) {
+        if (packet.index() == 0 || transfer == null || transfer.id != packet.transfer() || transfer.next != packet.index()
+                || transfer.total != packet.total()) {
+            if (packet.index() != 0 && transfer == null) {
+                // the rest of a transfer that was already refused or abandoned: one reply was enough
+                return;
+            }
             if (packet.index() != 0 || packet.total() < 1 || packet.total() > MAX_CHUNKS) {
                 TRANSFERS.remove(id);
                 send(player, new QcResultS2C(false, "the plan request was malformed"));
                 return;
             }
-            transfer = new Transfer(packet.transfer());
+            if (!player.isCreative()) {
+                // refused before any byte is buffered or decoded; QcPlanService.apply checks it again
+                TRANSFERS.remove(id);
+                send(player, new QcResultS2C(false, "creative mode is required to build into the world"));
+                return;
+            }
+            transfer = new Transfer(packet.transfer(), packet.total());
             TRANSFERS.put(id, transfer);
         }
         transfer.bytes.writeBytes(packet.data());
         transfer.next++;
-        if (transfer.next < packet.total()) {
+        if (transfer.next < transfer.total) {
             return;
         }
         TRANSFERS.remove(id);
         try {
-            CompoundTag request = NbtIo.readCompressed(new ByteArrayInputStream(transfer.bytes.toByteArray()));
+            CompoundTag request = decode(transfer.bytes.toByteArray());
             String action = request.getString("action");
             QcPlan plan = PlanCodec.fromNbt(request.getCompound("plan"));
             BlockPalette palette = PaletteCodec.fromNbt(request.getCompound("palette"));
@@ -195,14 +226,28 @@ public final class QcServerNetworking {
         }
     }
 
+    /**
+     * Inflates and parses a reassembled plan request. Unlike {@link NbtIo#readCompressed} the read is
+     * bounded by {@link #MAX_PLAN_NBT_BYTES}; going over it throws a {@link RuntimeException}, which
+     * the caller reports as a malformed request.
+     */
+    static CompoundTag decode(byte[] gzip) throws IOException {
+        try (DataInputStream in = new DataInputStream(new GZIPInputStream(new ByteArrayInputStream(gzip)))) {
+            return NbtIo.read(in, new NbtAccounter(MAX_PLAN_NBT_BYTES));
+        }
+    }
+
     /** The chunks of one plan request received so far. */
     private static final class Transfer {
         private final int id;
+        /** Fixed by the first chunk, so a later chunk cannot stretch the transfer past {@link #MAX_CHUNKS}. */
+        private final int total;
         private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         private int next;
 
-        private Transfer(int id) {
+        private Transfer(int id, int total) {
             this.id = id;
+            this.total = total;
         }
     }
 

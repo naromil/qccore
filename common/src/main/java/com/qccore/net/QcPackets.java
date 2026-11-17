@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.function.Function;
 
 /**
- * The six packets of the editor: build, align, plan-chunk and undo requests from the client, the unit
+ * The seven packets of the editor: build, align, plan-chunk, undo and redo requests from the client, the unit
  * index and a result message back to it.
  *
  * <p>The packets are loader-neutral records: each one writes itself to a {@link FriendlyByteBuf} and
@@ -158,8 +158,23 @@ public final class QcPackets {
         }
     }
 
+    /** Ask the server to redo the player's most recently undone plan apply. */
+    public record QcRedoC2S() implements QcPacket {
+
+        public static final Type<QcRedoC2S> TYPE = new Type<>(QCCore.id("redo"), QcRedoC2S.class, buf -> new QcRedoC2S());
+
+        @Override
+        public void write(FriendlyByteBuf buf) {
+        }
+
+        @Override
+        public Type<?> type() {
+            return TYPE;
+        }
+    }
+
     /** Every client-to-server packet, in registration order (Forge discriminators follow it). */
-    public static final List<Type<?>> C2S = List.of(QcBuildC2S.TYPE, QcAlignC2S.TYPE, QcPlanC2S.TYPE, QcUndoC2S.TYPE);
+    public static final List<Type<?>> C2S = List.of(QcBuildC2S.TYPE, QcAlignC2S.TYPE, QcPlanC2S.TYPE, QcUndoC2S.TYPE, QcRedoC2S.TYPE);
 
     /** Every server-to-client packet, in registration order. */
     public static final List<Type<?>> S2C = List.of(QcIndexS2C.TYPE, QcResultS2C.TYPE);
