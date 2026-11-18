@@ -226,6 +226,7 @@ Bit layout of `w`/`g`, identical in `LayersCodec`, `QcUnitRecord` and `QcOverlay
 | `common/src/main/java/com/qccore/core/plan/` | the plan model: `QcPlan`, `Cell`, `BuildShape`, `Modifiers`, `ComponentMask` (legacy), `Flags`, `BuildingSpec`, `RoadKit`, `BlockIds`, `PlanCompiler` |
 | `common/src/test/java/com/qccore/core/` | JUnit tests over registry-free logic (`plan/` holds the shape, plan and road tests) |
 | `common/src/test/java/com/qccore/net/` | `PlanRequestDecodeTest`: the bounded inflate of a plan request |
+| `common/src/test/java/com/qccore/client/` | `QcHistoryTest`: the registry-free plan undo/redo history |
 | `fabric/src/gametest/java/com/qccore/gametest/` | 10 gametests plus `TestFixtures` (fixtures + golden plumbing) |
 | `fabric/src/gametest/resources/` | the `qccore-gametest` mod metadata and `golden/unit-{export,import}-baseline.txt` |
 
@@ -237,7 +238,7 @@ it only behind `FMLEnvironment.dist == Dist.CLIENT` / `DistExecutor`, the Fabric
 
 ```bash
 ./gradlew build                 # all projects: :common:test, :fabric:runGameTest (through check), both remapJars
-./gradlew :common:test          # the 40 JUnit tests: no game, no block registry
+./gradlew :common:test          # the 44 JUnit tests: no game, no block registry
 ./gradlew :fabric:runGameTest   # the 10 gametests in a real dev server world, ending "All 10 required tests passed :)"
 ./gradlew :fabric:runClient     # dev Fabric client (needs a display); :forge:runClient for Forge
 ./gradlew :fabric:runServer     # dev dedicated server; /qc works from its console; :forge:runServer for Forge
@@ -352,7 +353,7 @@ Paths are relative to `common/src/main/java/com/qccore/`, except where a project
 |---|---|
 | `world/QcBuildService.java` | validates a build (creative, non-empty, <= 4096 units, `layer >= 1`, framework configured, component sizes, height fit) then applies it |
 | `world/QcAlignService.java` | BFS over the connected building, `Alignment.nearestDelta` per axis, clears the old footprint, rebuilds at the shifted anchor, re-keys the index |
-| `world/QcWorldOps.java` | the only world-write seam: `clearFootprint` (cell + 2-block shell), `placeBlocks`, `fits`, with `Block.NOTIFY_ALL \| Block.FORCE_STATE` |
+| `world/QcWorldOps.java` | the only world-write seam: `clearFootprint` (cell + 2-block shell), `placeBlocks`, `fits`, with `Block.UPDATE_ALL \| Block.UPDATE_KNOWN_SHAPE` |
 | `world/QcUnitIndex.java` | the `qccore_units` `SavedData`: per-dimension `BlockPos -> QcUnitRecord`; `prune` drops records whose origin block is air |
 | `core/UnitExporter.java` | the export walk; owns the component call order and the `LinkedHashMap` block map |
 | `core/UnitImporter.java` | grid detection, unit scan, the five single-block extractions, `scanSides`, re-centring on `UnitGrid.CENTER_X/CENTER_Z` |
@@ -383,7 +384,7 @@ Mojang names), so anything touching `BuiltInRegistries.BLOCK` is a gametest inst
 
 | Suite | Files | Covers |
 |---|---|---|
-| JUnit, 40 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest`, `plan/BuildShapeTest`, `plan/QcPlanTest`, `plan/RoadKitTest`, `qc/DistrictTest`, `net/PlanRequestDecodeTest` | the qckit port: a house's frame/floor/door/road/roof, every template x roof x pier kind builds with no missing role, unchosen roles reported together, fallbacks and optional roles, partition overrides (open = gate flag alone), shared planes between buildings, stripped templates and fresh building keys on stamping, pre-rework plans loading as one legacy building, decor on the road and never in a doorway, seeded, an empty decor style placing nothing; lattice math and residues; the index NBT round trip plus malformed state; the `w`/`g` bit layout and a playlist round trip; shapes and modifiers; partitions, rotation/mirror of flags, normalise/merge, `PlanCodec` round trip; the road contract (7 wide, lanes, joints, corner posts, medallion, plaza post, give-way); a plan request round-trips through the bounded inflate and a gzip bomb is refused |
+| JUnit, 44 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest`, `plan/BuildShapeTest`, `plan/QcPlanTest`, `plan/RoadKitTest`, `qc/DistrictTest`, `net/PlanRequestDecodeTest`, `client/QcHistoryTest` | the qckit port: a house's frame/floor/door/road/roof, every template x roof x pier kind builds with no missing role, unchosen roles reported together, fallbacks and optional roles, partition overrides (open = gate flag alone), shared planes between buildings, stripped templates and fresh building keys on stamping, pre-rework plans loading as one legacy building, decor on the road and never in a doorway, seeded, an empty decor style placing nothing; lattice math and residues; the index NBT round trip plus malformed state; the `w`/`g` bit layout and a playlist round trip; shapes and modifiers; partitions, rotation/mirror of flags, normalise/merge, `PlanCodec` round trip; the road contract (7 wide, lanes, joints, corner posts, medallion, plaza post, give-way); a plan request round-trips through the bounded inflate and a gzip bomb is refused; plan undo/redo depth, redo drop and the 100-step cap |
 | Gametests, 10 tests | `QcGameTests`, `QcPlanGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, an align moves the building, layer 0 and non-creative are refused; a plan (full unit, framework-only unit, cleared cell, road) applies, `/qc undo` restores every block and record, redo re-applies it, a second undo restores it again and a new apply drops the redo stack; plan refusals are user-visible; a qckit house applies with real block states (upright log posts, beams along their axis, a door on the road face, a hip roof, the road, street decor) and an empty style is refused naming its roles |
 
 Golden mechanics: baselines are **classpath resources** (`/golden/unit-export-baseline.txt`) inside the test mod,
@@ -395,7 +396,7 @@ an extracted tag is not deterministic. The game-test world is not recreated betw
 `QcGameTests.clearIndexArea` clears the test area's index records first. A JUnit XML report comes from
 `-Dfabric-api.gametest.report-file=<file>`.
 
-**Not covered:** the Forge glue (no Forge gametests; the gametests run on Fabric and exercise the shared code), the screens, `QcInteraction` (tools, shapes, the box height ray), `QcHistory`, `QcOverlayRenderer`,
+**Not covered:** the Forge glue (no Forge gametests; the gametests run on Fabric and exercise the shared code), the screens, `QcInteraction` (tools, shapes, the box height ray), `QcOverlayRenderer`,
 `QcBlockPreview`, `QcHud`, `QcSchematics`, `QcTemplates`, `QcKits`, the chunked transfer, the push loop, the `/qc`
 output and the input mixin have no automated tests, and `QcGameTests` does not cover erase or wall-flag editing.
 
