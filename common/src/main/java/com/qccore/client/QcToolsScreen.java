@@ -59,6 +59,8 @@ public class QcToolsScreen extends Screen {
 
 	@Override
 	protected void init() {
+		// a re-init (window resize) rebuilds the ground field: keep what was typed into it
+		commit();
 		this.cursorCell = this.minecraft == null ? null : QcInteraction.target(this.minecraft);
 		this.margin = QcClientState.plan.clearMargin;
 		this.left = this.width / 2 - COLUMN - GAP / 2;
@@ -103,10 +105,10 @@ public class QcToolsScreen extends Screen {
 
 		// 3. Plan history and the world undo
 		y = this.planTop + body;
-		this.addRenderableWidget(new Chip(this.left + 4, y, half, CHIP_H, "", QcInteraction::undo)
+		this.addRenderableWidget(new Chip(this.left + 4, y, half, CHIP_H, "", this::undo)
 				.label(() -> "↶ Undo edit (" + QcClientState.history.undoDepth() + ")")
 				.tip("Undo the last plan edit\nCtrl+Z here, Z in the world"));
-		this.addRenderableWidget(new Chip(this.left + 6 + half, y, half, CHIP_H, "", QcInteraction::redo)
+		this.addRenderableWidget(new Chip(this.left + 6 + half, y, half, CHIP_H, "", this::redo)
 				.label(() -> "↷ Redo edit (" + QcClientState.history.redoDepth() + ")")
 				.tip("Redo a plan edit\nCtrl+Y here, Shift+Z in the world"));
 		y += ROW;
@@ -261,14 +263,14 @@ public class QcToolsScreen extends Screen {
 			}
 			if (hasControlDown() && keyCode == GLFW.GLFW_KEY_Z) {
 				if (hasShiftDown()) {
-					QcInteraction.redo();
+					redo();
 				} else {
-					QcInteraction.undo();
+					undo();
 				}
 				return true;
 			}
 			if (hasControlDown() && keyCode == GLFW.GLFW_KEY_Y) {
-				QcInteraction.redo();
+				redo();
 				return true;
 			}
 			if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
@@ -294,6 +296,31 @@ public class QcToolsScreen extends Screen {
 	@Override
 	public void removed() {
 		commit();
+	}
+
+	/**
+	 * Plan undo from the screen. Pending margin/ground changes are committed first (so the undo
+	 * reverts them), and the fields are reloaded afterwards: otherwise closing the screen would
+	 * write the stale field values back over the restored plan and drop the redo stack.
+	 */
+	private void undo() {
+		commit();
+		QcInteraction.undo();
+		reload();
+	}
+
+	private void redo() {
+		commit();
+		QcInteraction.redo();
+		reload();
+	}
+
+	/** Shows the plan's clear margin and ground block in the fields. */
+	private void reload() {
+		this.margin = QcClientState.plan.clearMargin;
+		if (this.ground != null) {
+			this.ground.setValue(QcClientState.plan.ground);
+		}
 	}
 
 	/** Copies the clear margin and the ground block into the plan, as one undoable edit. */

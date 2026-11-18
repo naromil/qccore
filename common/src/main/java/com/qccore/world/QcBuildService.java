@@ -48,22 +48,9 @@ public final class QcBuildService {
                 return new QcResult(false, "layer " + layer + " is not allowed (layers start at 1)");
             }
         }
-        if (!palette.isConfigured()) {
-            return new QcResult(false, "framework block id '" + describeId(palette.frameworkBlock().getRawId()) + "' is not a block");
-        }
-
-        QcResult sizeError = validateComponentSize("inner wall", palette.innerWall(), "7x7x1 or 7x7x3");
-        if (sizeError == null) {
-            sizeError = validateComponentSize("gate", palette.gate(), "7x7x1 or 7x7x3");
-        }
-        if (sizeError == null) {
-            sizeError = validateComponentSize("outer wall", palette.outerWall(), "7x7x0..3");
-        }
-        if (sizeError == null) {
-            sizeError = validateComponentSize("inner column", palette.innerColumn(), "3x7x3");
-        }
-        if (sizeError != null) {
-            return sizeError;
+        QcResult paletteError = validatePalette(palette);
+        if (paletteError != null) {
+            return paletteError;
         }
 
         ServerLevel world = player.serverLevel();
@@ -122,6 +109,27 @@ public final class QcBuildService {
             }
         }
         return origins;
+    }
+
+    /**
+     * The palette checks shared by build and align: a configured framework block and valid
+     * component sizes. {@code null} when the palette may be built with.
+     */
+    static QcResult validatePalette(BlockPalette palette) {
+        if (!palette.isConfigured()) {
+            return new QcResult(false, "framework block id '" + describeId(palette.frameworkBlock().getRawId()) + "' is not a block");
+        }
+        QcResult sizeError = validateComponentSize("inner wall", palette.innerWall(), "7x7x1 or 7x7x3");
+        if (sizeError == null) {
+            sizeError = validateComponentSize("gate", palette.gate(), "7x7x1 or 7x7x3");
+        }
+        if (sizeError == null) {
+            sizeError = validateComponentSize("outer wall", palette.outerWall(), "7x7x0..3");
+        }
+        if (sizeError == null) {
+            sizeError = validateComponentSize("inner column", palette.innerColumn(), "3x7x3");
+        }
+        return sizeError;
     }
 
     static QcResult validateComponentSize(String name, QcComponent component, String expected) {

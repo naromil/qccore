@@ -3,6 +3,7 @@ package com.qccore.world;
 import com.qccore.core.Alignment;
 import com.qccore.core.QcResult;
 import com.qccore.core.QcUnit;
+import com.qccore.core.UnitBlockConverter;
 import com.qccore.core.UnitLayers;
 import com.qccore.core.UnitPos;
 import com.qccore.core.palette.BlockPalette;
@@ -11,13 +12,16 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Re-aligns a whole connected building to a lattice.
@@ -96,10 +100,29 @@ public final class QcAlignService {
             layers.layer(layer).put(pos, unit);
         }
 
+        // Everything is checked before the old building is cleared: an unconfigured palette or a
+        // shift out of the world's height would otherwise erase it without a replacement.
+        QcResult paletteError = QcBuildService.validatePalette(palette);
+        if (paletteError != null) {
+            return paletteError;
+        }
+        Map<BlockPos, BlockState> blockMap = UnitBlockConverter.convertLayersToBlockMap(layers, palette, newAnchor);
+        if (blockMap.isEmpty()) {
+            return new QcResult(false, "the layout produced no blocks");
+        }
+        Set<BlockPos> positions = new HashSet<>(blockMap.keySet());
+        for (BlockPos origin : QcBuildService.origins(newAnchor, layers)) {
+            positions.add(origin);
+            positions.add(origin.offset(8, 8, 8));
+        }
+        if (!QcWorldOps.fits(world, positions)) {
+            return new QcResult(false, "the aligned building would not fit inside this world's height");
+        }
+
         // The old cells have to go before the rebuild writes the new ones, so nothing of the old
         // building survives next to it.
         QcWorldOps.clearFootprint(world, building.keySet());
-        QcBuildService.apply(world, newAnchor, layers, palette);
+        QcBuildService.apply(world, newAnchor, layers, blockMap);
         for (BlockPos oldOrigin : building.keySet()) {
             index.remove(dimension, oldOrigin);
         }

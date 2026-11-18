@@ -416,15 +416,7 @@ public final class QcInteraction {
 
 	/** The keybind pump: world guard, keybinds and the HUD message lifetime. */
 	public static void onClientTick(Minecraft client) {
-		ResourceLocation current = client.level == null ? null : client.level.dimension().location();
-		if (!Objects.equals(current, QcClientState.dimension)) {
-			boolean hadSession = QcClientState.dimension != null;
-			QcClientState.reset();
-			QcClientState.dimension = current;
-			if (hadSession) {
-				QcClientState.say(WORLD_MESSAGE);
-			}
-		}
+		syncDimension(client);
 		useHeldLastTick = client.options.keyUse.isDown();
 		if (QcClientState.messageTicks > 0 && --QcClientState.messageTicks == 0) {
 			QcClientState.message = null;
@@ -487,6 +479,23 @@ public final class QcInteraction {
 		while (QcKeys.preview.consumeClick()) {
 			QcClientState.blockPreview = !QcClientState.blockPreview;
 			QcClientState.say("QC: block preview " + (QcClientState.blockPreview ? "on" : "off"));
+		}
+	}
+
+	/**
+	 * Drops the session when the client's level is no longer the one the session belongs to. Runs
+	 * every tick and before a unit index is stored, so an index of the new dimension that arrives
+	 * before the next tick cannot keep the old dimension's plan alive.
+	 */
+	static void syncDimension(Minecraft client) {
+		ResourceLocation current = client.level == null ? null : client.level.dimension().location();
+		if (!Objects.equals(current, QcClientState.dimension)) {
+			boolean hadSession = QcClientState.dimension != null;
+			QcClientState.reset();
+			QcClientState.dimension = current;
+			if (hadSession) {
+				QcClientState.say(WORLD_MESSAGE);
+			}
 		}
 	}
 

@@ -26,6 +26,8 @@ public class QcTemplateScreen extends Screen {
 	private List<String> names = List.of();
 	private int selected;
 	private int scroll;
+	/** Whether the next layout scrolls the selected row into view (not after a wheel scroll). */
+	private boolean reveal = true;
 	private int visibleRows;
 	private EditBox nameField;
 	private String typedName;
@@ -58,12 +60,15 @@ public class QcTemplateScreen extends Screen {
 		this.right = this.width / 2 + 3;
 		int listTop = TOP + QcUi.HEADER_HEIGHT + 4;
 		this.visibleRows = Math.max(1, (this.height - 30 - listTop - 4) / ROW);
-		this.scroll = Math.max(0, Math.min(this.scroll, this.names.size() - this.visibleRows));
-		if (this.selected < this.scroll) {
-			this.scroll = this.selected;
-		} else if (this.selected >= this.scroll + this.visibleRows) {
-			this.scroll = this.selected - this.visibleRows + 1;
+		if (this.reveal) {
+			if (this.selected < this.scroll) {
+				this.scroll = this.selected;
+			} else if (this.selected >= this.scroll + this.visibleRows) {
+				this.scroll = this.selected - this.visibleRows + 1;
+			}
+			this.reveal = false;
 		}
+		this.scroll = Math.max(0, Math.min(this.scroll, this.names.size() - this.visibleRows));
 		this.rows.clear();
 		for (int i = 0; i < Math.min(this.visibleRows, this.names.size() - this.scroll); i++) {
 			int index = this.scroll + i;
@@ -159,6 +164,7 @@ public class QcTemplateScreen extends Screen {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_UP) {
 				int step = keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN ? 1 : -1;
 				this.selected = Math.floorMod(this.selected + step, this.names.size());
+				this.reveal = true;
 				rebuild();
 				return true;
 			}
@@ -232,6 +238,7 @@ public class QcTemplateScreen extends Screen {
 		}
 		this.names = QcTemplates.list();
 		this.selected = Math.min(this.selected, Math.max(0, this.names.size() - 1));
+		this.reveal = true;
 		rebuild();
 	}
 
@@ -248,6 +255,7 @@ public class QcTemplateScreen extends Screen {
 			this.names = QcTemplates.list();
 			String saved = QcSchematics.normaliseName(this.nameField.getValue());
 			this.selected = Math.max(0, this.names.indexOf(saved));
+			this.reveal = true;
 			rebuild();
 		} catch (RuntimeException e) {
 			this.footer = "could not save: " + e.getMessage();

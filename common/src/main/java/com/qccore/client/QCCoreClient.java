@@ -51,6 +51,7 @@ public final class QCCoreClient {
 		if (!dimension.equals(current)) {
 			return;
 		}
+		QcInteraction.syncDimension(client);
 		Map<BlockPos, QcUnitRecord> records = new HashMap<>();
 		ListTag list = units.getList("units", Tag.TAG_COMPOUND);
 		for (int i = 0; i < list.size(); i++) {
@@ -59,7 +60,6 @@ public final class QCCoreClient {
 		}
 		QcClientState.nearbyUnits.clear();
 		QcClientState.nearbyUnits.putAll(records);
-		QcClientState.dimension = dimension;
 	}
 
 	private static void receiveResult(boolean ok, String message) {

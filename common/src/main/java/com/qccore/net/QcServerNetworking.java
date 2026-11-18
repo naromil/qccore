@@ -69,7 +69,8 @@ public final class QcServerNetworking {
      */
     private static final long MAX_PLAN_NBT_BYTES = 32L * 1024 * 1024;
 
-    private static final Map<UUID, BlockPos> LAST_PUSH = new HashMap<>();
+    /** Where and in which dimension each player was last pushed the units around them. */
+    private static final Map<UUID, LastPush> LAST_PUSH = new HashMap<>();
     private static final Map<UUID, Transfer> TRANSFERS = new HashMap<>();
     private static int tick;
 
@@ -114,15 +115,16 @@ public final class QcServerNetworking {
         QcUndoService.forget(player.getUUID());
     }
 
-    /** Called at the end of every server tick; re-pushes players that moved far enough. */
+    /** Called at the end of every server tick; re-pushes players that moved far enough or changed dimension. */
     public static void onServerTick(MinecraftServer server) {
         tick++;
         if (tick % PUSH_INTERVAL_TICKS != 0) {
             return;
         }
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            BlockPos last = LAST_PUSH.get(player.getUUID());
-            if (last == null || !last.closerThan(player.blockPosition(), PUSH_MOVE_DISTANCE)) {
+            LastPush last = LAST_PUSH.get(player.getUUID());
+            if (last == null || !last.dimension().equals(player.serverLevel().dimension().location())
+                    || !last.pos().closerThan(player.blockPosition(), PUSH_MOVE_DISTANCE)) {
                 push(player);
             }
         }
@@ -237,6 +239,9 @@ public final class QcServerNetworking {
         }
     }
 
+    private record LastPush(ResourceLocation dimension, BlockPos pos) {
+    }
+
     /** The chunks of one plan request received so far. */
     private static final class Transfer {
         private final int id;
@@ -265,7 +270,7 @@ public final class QcServerNetworking {
         index.prune(world, center, PUSH_RADIUS);
 
         send(player, new QcIndexS2C(dimension, snapshot(index.units(dimension), center)));
-        LAST_PUSH.put(player.getUUID(), center);
+        LAST_PUSH.put(player.getUUID(), new LastPush(dimension, center));
     }
 
     private static CompoundTag snapshot(Map<BlockPos, QcUnitRecord> units, BlockPos center) {
