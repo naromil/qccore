@@ -10,7 +10,8 @@ ghost blocks, and only then **apply** the whole plan to the world in one step (c
 or **export** it as a vanilla structure `.nbt`.
 
 1. Press **G** to enter the editor: the lattice is anchored at your feet (layer 1 = your cell), or
-   on the lattice of a nearby QC building. **Y** re-anchors at the crosshair.
+   on the lattice of a nearby QC building. **Y** re-anchors at the crosshair. Leaving and re-entering
+   the editor keeps a non-empty plan where it was; only **Y** moves it.
 2. Pick a **tool** (**N** cycles, or **B** for the tools screen, where **1-9** pick a tool directly) and a
    **shape** (**V** cycles). The HUD panel in the top-left corner shows the tool, shape progress, plan and
    cursor; **hold Left Alt** to see every control with your current key bindings. Every control in the

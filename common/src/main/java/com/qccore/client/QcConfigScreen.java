@@ -242,6 +242,8 @@ public class QcConfigScreen extends Screen {
 			QcClientState.plan.setUnits(imported);
 			QcClientState.changed();
 			if (!QcClientState.active) {
+				// a freshly loaded layout lands at the player, not at a previous session's anchor
+				QcClientState.anchor = null;
 				QcInteraction.enterEditorMode(this.minecraft);
 			}
 			for (IdRow row : this.idRows) {

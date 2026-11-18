@@ -59,9 +59,20 @@ public final class QcInteraction {
 	private QcInteraction() {
 	}
 
-	/** Enters the editor with the anchor at the player, so layer 1 is the player's own cell. */
+	/**
+	 * Enters the editor with the anchor at the player, so layer 1 is the player's own cell. While a
+	 * plan exists the anchor is kept instead: plan cells are relative to it, so moving it would drag
+	 * the planned units along with the player ({@code Y} still re-anchors on purpose).
+	 */
 	public static void enterEditorMode(Minecraft client) {
 		if (client.player == null || client.level == null) {
+			return;
+		}
+		if (QcClientState.anchor != null && !QcClientState.plan.isEmpty()) {
+			QcClientState.active = true;
+			QcClientState.dimension = client.level.dimension().location();
+			QcClientState.say("plan kept in place; Y re-anchors it at the crosshair");
+			QcClientState.changed();
 			return;
 		}
 		int x = Mth.floor(client.player.getX());
