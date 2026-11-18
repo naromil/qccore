@@ -198,4 +198,94 @@ class DistrictTest {
         assertFalse(District.generates(back, new Cell(0, 1, 0)));
         assertEquals("minecraft:lane3", back.styles().get("street").get("floor3"));
     }
+
+    static BlockChoice decor() {
+        BlockChoice d = new BlockChoice(Roles.DECOR);
+        d.set("pot", "minecraft:potted_fern");
+        d.set("planter", "minecraft:moss_block");
+        d.set("flower", "minecraft:poppy,minecraft:dandelion");
+        d.set("seat", "minecraft:oak_stairs");
+        d.set("goods", "minecraft:barrel");
+        d.set("logs", "minecraft:oak_log");
+        d.set("bush", "minecraft:oak_leaves");
+        d.set("post", "minecraft:oak_fence");
+        d.set("lamp", "minecraft:lantern");
+        d.set("awning", "minecraft:red_wool");
+        d.set("trunk", "minecraft:oak_log");
+        d.set("crown", "minecraft:oak_leaves");
+        d.set("basin", "minecraft:stone_bricks");
+        return d;
+    }
+
+    /** A row of three houses facing a street, the street wider at a crossing, and a grass yard. */
+    static QcPlan street() {
+        QcPlan plan = house("house", 3, 1, 1);
+        for (int x = -1; x <= 3; x++) {
+            plan.roads().put(new Cell(x, 1, 2), "street");
+        }
+        plan.roads().put(new Cell(1, 1, 3), "street");
+        BlockChoice yard = road();
+        for (int lane = 1; lane <= 4; lane++) {
+            yard.set("floor" + lane, "minecraft:grass_block");
+        }
+        yard.set("joint1", null);
+        plan.styles().put("yard", yard);
+        plan.roads().put(new Cell(4, 1, 1), "yard");
+        plan.styles().put("props", decor());
+        plan.decorStyle = "props";
+        plan.decorDensity = 100;
+        return plan;
+    }
+
+    @Test
+    void decorDressesTheStreetsOnTheRoadAndNeverInADoorway() {
+        QcPlan plan = street();
+        District.Result result = District.build(plan);
+        assertTrue(result.problems().isEmpty(), result.problems().toString());
+        Map<BlockPos, String> bare = District.build(withoutDecor(plan)).blocks();
+        int props = 0;
+        for (Map.Entry<BlockPos, String> e : result.blocks().entrySet()) {
+            if (!bare.containsKey(e.getKey())) {
+                props++;
+                BlockPos below = e.getKey().below();
+                assertTrue(e.getKey().getY() > 8, "decor stands above the road plane: " + e.getKey());
+                if (e.getKey().getY() == 9) {
+                    assertTrue(result.blocks().containsKey(below), "a prop stands on the road: " + e.getKey());
+                }
+            }
+        }
+        assertTrue(props > 10, "a dense street gets props, got " + props);
+        assertTrue(result.blocks().values().stream().anyMatch(s -> s.startsWith("minecraft:oak_leaves")),
+                "the grass yard gets a tree or a bush");
+        assertEquals(result.blocks(), District.build(street()).blocks(), "the same seed dresses the same street");
+        plan.decorSeed = 7;
+        assertNotEquals(result.blocks(), District.build(plan).blocks(), "another seed, another arrangement");
+        // the door's approach (3 wide, 3 deep in front of the door) stays clear of props
+        for (Map.Entry<BlockPos, String> e : result.blocks().entrySet()) {
+            if (e.getValue().startsWith("minecraft:oak_door") && e.getValue().contains("half=lower")) {
+                BlockPos door = e.getKey();
+                for (int a = -1; a <= 1; a++) {
+                    for (int d = 1; d <= 3; d++) {
+                        assertFalse(!bare.containsKey(door.offset(a, 0, d)) && result.blocks().containsKey(door.offset(a, 0, d)),
+                                "a prop in the doorway at " + door.offset(a, 0, d));
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    void anEmptyDecorStylePlacesNothingAndAMissingOneIsReported() {
+        QcPlan plan = street();
+        plan.styles().put("props", new BlockChoice(Roles.DECOR));
+        assertEquals(District.build(withoutDecor(plan)).blocks(), District.build(plan).blocks());
+        plan.decorStyle = "nowhere";
+        assertFalse(District.build(plan).problems().isEmpty());
+    }
+
+    private static QcPlan withoutDecor(QcPlan plan) {
+        QcPlan copy = plan.copy();
+        copy.decorStyle = "";
+        return copy;
+    }
 }

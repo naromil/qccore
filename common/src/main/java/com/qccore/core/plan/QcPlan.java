@@ -48,6 +48,12 @@ public final class QcPlan {
     private final Map<String, BlockChoice> styles = new LinkedHashMap<>();
     /** Extra blocks cleared outside the exposed sides and above every cleared cell, 0..4. */
     public int clearMargin = 2;
+    /** The decor style (kind decor) the roads are dressed with; blank = no decor. */
+    public String decorStyle = "";
+    /** How much decor, 0..100 (qckit's density 0..1). */
+    public int decorDensity = 60;
+    /** The decor seed: the same plan and seed dress the same streets. */
+    public int decorSeed;
     /** Block id filled into the air of a cleared cell's floor plane; blank = no levelling. */
     public String ground = "";
 
@@ -228,6 +234,9 @@ public final class QcPlan {
         copy.clears.addAll(clears);
         copy.roads.putAll(roads);
         styles.forEach((k, v) -> copy.styles.put(k, v.copy()));
+        copy.decorStyle = decorStyle;
+        copy.decorDensity = decorDensity;
+        copy.decorSeed = decorSeed;
         copy.clearMargin = clearMargin;
         copy.ground = ground;
         return copy;
@@ -301,6 +310,9 @@ public final class QcPlan {
             out.roads.put(transform.apply(entry.getKey()), entry.getValue());
         }
         styles.forEach((k, v) -> out.styles.put(k, v.copy()));
+        out.decorStyle = decorStyle;
+        out.decorDensity = decorDensity;
+        out.decorSeed = decorSeed;
         out.clearMargin = clearMargin;
         out.ground = ground;
         return out;
@@ -337,6 +349,11 @@ public final class QcPlan {
             roads.put(entry.getKey(), entry.getValue());
         }
         other.styles.forEach((k, v) -> styles.putIfAbsent(k, v.copy()));
+        if ((decorStyle == null || decorStyle.isBlank()) && other.decorStyle != null && !other.decorStyle.isBlank()) {
+            decorStyle = other.decorStyle;
+            decorDensity = other.decorDensity;
+            decorSeed = other.decorSeed;
+        }
     }
 
     /**

@@ -69,6 +69,13 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
 7. **M** toggles the ghost-block preview, **O** the wireframes, **I** opens the lattice, layout import
    and the legacy QCSimple palette, **U** re-aligns a placed building.
 
+**Street decor** (qckit's `decor.py`): add a decor style in the block chooser (**+ decor**) and choose its
+roles (pot, planter, flower, seat, goods, logs, bush, post, lamp, awning, trunk, crown, basin; `a,b,c` picks one
+per prop). The plan's streets then get props on the ground round the buildings: planters and benches in front of
+houses, stalls and crates by shops, lamps and benches by halls, potted plants beside doors, trees and flowers in
+grass yards, a fountain or tree at some crossings, never in a doorway. A prop whose roles are not all chosen is
+left out. **decor on/off**, **density** and **seed** sit under the decor style's roles.
+
 **Templates** (tools screen → Templates; double-click a template to use it) save the plan's geometry —
 buildings with their designs and style names, partitions, roads, cleared cells — to
 `<gameDir>/qccore/templates/<name>.qct.nbt`, **with every block choice stripped**. Stamping a template makes

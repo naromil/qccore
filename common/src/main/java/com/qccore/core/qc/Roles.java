@@ -15,6 +15,7 @@ public final class Roles {
 
     public static final String BUILDING = "building";
     public static final String ROAD = "road";
+    public static final String DECOR = "decor";
 
     private static final Map<String, List<Role>> SETS = new LinkedHashMap<>();
 
@@ -71,6 +72,21 @@ public final class Roles {
         road.add(Role.optional("medallion", "the 3x3 at a bend, tee or crossing"));
         road.add(Role.optional("centre", "the medallion's middle block"));
         register(ROAD, road);
+        String list = " (a,b,c picks one per prop)";
+        register(DECOR, List.of(
+                Role.optional("pot", "potted plants beside doors (minecraft:potted_*)" + list),
+                Role.optional("planter", "soil of a raised bed (moss_block, rooted_dirt)" + list),
+                Role.optional("flower", "small flowers or short grass on beds and soil" + list),
+                Role.optional("seat", "a bench, back to the wall" + list).hint("stairs"),
+                Role.optional("goods", "full blocks to stack: barrel, hay_block, composter" + list),
+                Role.optional("logs", "a woodpile along the wall" + list),
+                Role.optional("bush", "leaves: bushes" + list),
+                Role.optional("post", "a lamp or stall post" + list).hint("fence"),
+                Role.optional("lamp", "the lamp on a post" + list).hint("light"),
+                Role.optional("awning", "a stall's roof (wool, slab)" + list),
+                Role.optional("trunk", "a tree's trunk" + list),
+                Role.optional("crown", "a tree's leaves" + list),
+                Role.optional("basin", "a fountain's rim (full block, slab or wall)" + list)));
     }
 
     private Roles() {

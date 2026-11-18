@@ -18,7 +18,7 @@ import net.minecraft.nbt.Tag;
  * {"units": {@link LayersCodec}, "unitBuildings":[{"x","y","z","b":key}],
  *  "buildings":{key: {"template","style","options":{k: v}}}, "styles":{name: {"kind","blocks":{role: id}}},
  *  "masks":[{"x","y","z","m"}], "clears":[{"x","y","z"}], "clearMargin":int, "ground":String,
- *  "roads":[{"x","y","z","s":style}]}
+ *  "roads":[{"x","y","z","s":style}], "decorStyle":String, "decorDensity":0..100, "decorSeed":int}
  * </pre>
  * {@code y} is the editor layer. Masks (legacy units only) equal to all nine components are not
  * written.
@@ -48,6 +48,9 @@ public final class PlanCodec {
         CompoundTag styles = new CompoundTag();
         plan.styles().forEach((name, style) -> styles.put(name, style.toNbt()));
         tag.put("styles", styles);
+        tag.putString("decorStyle", plan.decorStyle == null ? "" : plan.decorStyle);
+        tag.putInt("decorDensity", plan.decorDensity);
+        tag.putInt("decorSeed", plan.decorSeed);
         ListTag masks = new ListTag();
         for (Map.Entry<Cell, Integer> entry : plan.masks().entrySet()) {
             CompoundTag mask = cell(entry.getKey());
@@ -100,6 +103,9 @@ public final class PlanCodec {
         for (String name : styles.getAllKeys()) {
             plan.styles().put(name, BlockChoice.fromNbt(styles.getCompound(name)));
         }
+        plan.decorStyle = tag.getString("decorStyle");
+        plan.decorDensity = tag.contains("decorDensity") ? Math.max(0, Math.min(100, tag.getInt("decorDensity"))) : 60;
+        plan.decorSeed = tag.getInt("decorSeed");
         ListTag masks = tag.getList("masks", Tag.TAG_COMPOUND);
         for (int i = 0; i < masks.size(); i++) {
             CompoundTag mask = masks.getCompound(i);

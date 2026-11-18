@@ -237,6 +237,19 @@ public class QcPlanGameTests implements FabricGameTest {
         plan.addUnit(new Cell(1, 2, 0), "A");
         plan.roads().put(new Cell(0, 1, 1), "street");
         plan.roads().put(new Cell(1, 1, 1), "street");
+        BlockChoice props = new BlockChoice(Roles.DECOR);
+        props.set("pot", "potted_fern");
+        props.set("seat", "spruce_stairs");
+        props.set("goods", "barrel,hay_block");
+        props.set("post", "spruce_fence");
+        props.set("lamp", "lantern");
+        props.set("awning", "red_wool");
+        props.set("planter", "moss_block");
+        props.set("flower", "poppy");
+        props.set("basin", "stone_brick_wall");
+        plan.styles().put("props", props);
+        plan.decorStyle = "props";
+        plan.decorDensity = 100;
         BlockPalette palette = new BlockPalette();
         Defaults.applyTo(palette);
         ServerPlayer player = ctx.makeMockServerPlayerInLevel();
@@ -276,6 +289,15 @@ public class QcPlanGameTests implements FabricGameTest {
             throw new AssertionError("no door on the road face");
         }
         expect(world, anchor.offset(4, 8, 12), Blocks.STONE_BRICKS, "road in front of the house");
+        boolean decor = false;
+        for (BlockPos pos : BlockPos.betweenClosed(anchor.offset(-1, 9, 9), anchor.offset(17, 12, 16))) {
+            net.minecraft.world.level.block.state.BlockState state = world.getBlockState(pos);
+            decor |= state.is(Blocks.POTTED_FERN) || state.is(Blocks.BARREL) || state.is(Blocks.HAY_BLOCK)
+                    || state.is(Blocks.SPRUCE_STAIRS) || state.is(Blocks.MOSS_BLOCK) || state.is(Blocks.SPRUCE_FENCE);
+        }
+        if (!decor) {
+            throw new AssertionError("no street decor in front of the house");
+        }
         if (!QcUndoService.undo(player).ok()) {
             throw new AssertionError("could not undo the house");
         }

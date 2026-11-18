@@ -94,7 +94,8 @@ public class QcBlockChooserScreen extends Screen {
 			String name = names.get(i);
 			this.addRenderableWidget(new Chip(this.left + 4, y, LEFT_W - 8, CHIP_H, "", () -> select(name))
 					.label(() -> styleLabel(name)).selected(() -> name.equals(this.style))
-					.accent(styles.get(name).kind().equals(Roles.ROAD) ? QcUi.color(QcTool.ROAD) : QcUi.color(QcTool.UNITS))
+					.accent(styles.get(name).kind().equals(Roles.ROAD) ? QcUi.color(QcTool.ROAD)
+							: styles.get(name).kind().equals(Roles.DECOR) ? QcUi.WARN : QcUi.color(QcTool.UNITS))
 					.tip(styles.get(name).kind() + " style " + name));
 			y += ROW;
 		}
@@ -115,11 +116,13 @@ public class QcBlockChooserScreen extends Screen {
 		this.newStyle.setHint(Component.literal("new style name").withStyle(st -> st.withColor(0x667080)));
 		this.addRenderableWidget(this.newStyle);
 		y += ROW;
-		int half = (LEFT_W - 10) / 2;
-		this.addRenderableWidget(new Chip(this.left + 4, y, half, CHIP_H, "+ building", () -> create(Roles.BUILDING))
+		int third = (LEFT_W - 12) / 3;
+		this.addRenderableWidget(new Chip(this.left + 4, y, third, CHIP_H, "+ bldg", () -> create(Roles.BUILDING))
 				.tip("Add an empty building style"));
-		this.addRenderableWidget(new Chip(this.left + 6 + half, y, half, CHIP_H, "+ road", () -> create(Roles.ROAD))
+		this.addRenderableWidget(new Chip(this.left + 6 + third, y, third, CHIP_H, "+ road", () -> create(Roles.ROAD))
 				.accent(QcUi.color(QcTool.ROAD)).tip("Add an empty road style and make it the road tool's"));
+		this.addRenderableWidget(new Chip(this.left + 8 + 2 * third, y, third, CHIP_H, "+ decor", () -> create(Roles.DECOR))
+				.accent(QcUi.WARN).tip("Add an empty decor style and dress the plan's streets with it"));
 
 		// 2. Kits
 		int kitTop = newTop + 46;
@@ -184,13 +187,17 @@ public class QcBlockChooserScreen extends Screen {
 			}
 			int pages = Math.max(1, (roles.size() + this.rowsPerPage - 1) / this.rowsPerPage);
 			int navY = bottom - ROW + 2;
-			this.addRenderableWidget(new Chip(this.right + 4, navY, 72, CHIP_H, "", () -> {
-				storeFields();
-				this.allRoles = !this.allRoles;
-				this.page = 0;
-				rebuild();
-			}).label(() -> this.allRoles ? "all roles" : "used roles").selected(() -> this.allRoles)
-					.tip("Show every role of this kind, or only those the plan's buildings and roads reach"));
+			if (this.work.kind().equals(Roles.DECOR)) {
+				decorControls(navY);
+			} else {
+				this.addRenderableWidget(new Chip(this.right + 4, navY, 72, CHIP_H, "", () -> {
+					storeFields();
+					this.allRoles = !this.allRoles;
+					this.page = 0;
+					rebuild();
+				}).label(() -> this.allRoles ? "all roles" : "used roles").selected(() -> this.allRoles)
+						.tip("Show every role of this kind, or only those the plan's buildings and roads reach"));
+			}
 			if (pages > 1) {
 				this.addRenderableWidget(new Chip(this.right + this.rightW - 66, navY, 30, CHIP_H, "‹", () -> {
 					storeFields();
@@ -221,6 +228,31 @@ public class QcBlockChooserScreen extends Screen {
 
 	private void rebuild() {
 		this.rebuildWidgets();
+	}
+
+	/** For a decor style: whether it dresses the plan's streets, how densely, and the seed. */
+	private void decorControls(int navY) {
+		String name = this.style;
+		this.addRenderableWidget(new Chip(this.right + 4, navY, 64, CHIP_H, "", () -> {
+			storeFields();
+			commit();
+			QcInteraction.editFromScreen(() -> {
+				QcClientState.plan.decorStyle = name.equals(QcClientState.plan.decorStyle) ? "" : name;
+				return true;
+			});
+		}).label(() -> name.equals(QcClientState.plan.decorStyle) ? "decor on" : "decor off")
+				.selected(() -> name.equals(QcClientState.plan.decorStyle)).accent(QcUi.WARN)
+				.tip("Dress the plan's streets with this style (one decor style at a time)"));
+		this.addRenderableWidget(new QcUi.Stepper(this.right + 70, navY, 58, CHIP_H, "density", 0, 100,
+				() -> QcClientState.plan.decorDensity, value -> QcInteraction.editFromScreen(() -> {
+					QcClientState.plan.decorDensity = value;
+					return true;
+				})).tip("How much decor, 0-100"));
+		this.addRenderableWidget(new QcUi.Stepper(this.right + 130, navY, 58, CHIP_H, "seed", -999, 999,
+				() -> QcClientState.plan.decorSeed, value -> QcInteraction.editFromScreen(() -> {
+					QcClientState.plan.decorSeed = value;
+					return true;
+				})).tip("Another seed, another arrangement of the same props"));
 	}
 
 	/** The roles to list: reached ones (unset required first) or every role of the kind. */
@@ -282,6 +314,12 @@ public class QcBlockChooserScreen extends Screen {
 		QcInteraction.editFromScreen(() -> QcClientState.plan.styles().putIfAbsent(name, new BlockChoice(kind)) == null);
 		if (kind.equals(Roles.ROAD)) {
 			QcClientState.roadStyle = name;
+		}
+		if (kind.equals(Roles.DECOR)) {
+			QcInteraction.editFromScreen(() -> {
+				QcClientState.plan.decorStyle = name;
+				return true;
+			});
 		}
 		this.style = name;
 		this.work = QcClientState.plan.styles().get(name).copy();

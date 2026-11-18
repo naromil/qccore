@@ -55,8 +55,11 @@ the original QCSimple-port spec, is no longer in the repo.)
   (building and road role sets, optionality, fallbacks), `BlockChoice` (a style), `StyleReader` (records reached and
   missing roles), `BlockStr` (blocks.py: stair/slab/door/cornice states, `oriented`, the connection pass),
   `District` (plan.py's build: generation, road layout round doors and thick columns, the outward-decoration
-  merge, checks). The ground storey of a building is its lowest layer; a column whose lowest unit stands higher is a
-  span. qckit's decor.py (street props) and probe.py are not ported.
+  merge, checks), `Decor` (decor.py: street props per building character on frontages, street edges, yards and
+  nodes, from the plan's decor style; seeded by `QcPlan.decorSeed`, `decorDensity` 0..100; characters per template
+  are a registry). The ground storey of a building is its lowest layer; a column whose lowest unit stands higher is a
+  span. qckit's probe.py (render probes) is not ported; Java's random means decor is deterministic but not qckit's
+  exact arrangement.
 - **Domain:** a **QC Unit** is a 9x9x9 block cell with a 7x7x7 interior. Units are spaced **8 blocks apart** on every
   axis, so neighbours *share* the boundary plane (local `0` of one unit is local `8` of the next); unit origins
   satisfy `x = 8*dx + anchorX` (same for `y`, `z`) and unit-local `(x, y, z)` lands at `absX = dx*8 + x`,
@@ -234,7 +237,7 @@ it only behind `FMLEnvironment.dist == Dist.CLIENT` / `DistExecutor`, the Fabric
 
 ```bash
 ./gradlew build                 # all projects: :common:test, :fabric:runGameTest (through check), both remapJars
-./gradlew :common:test          # the 38 JUnit tests: no game, no block registry
+./gradlew :common:test          # the 40 JUnit tests: no game, no block registry
 ./gradlew :fabric:runGameTest   # the 10 gametests in a real dev server world, ending "All 10 required tests passed :)"
 ./gradlew :fabric:runClient     # dev Fabric client (needs a display); :forge:runClient for Forge
 ./gradlew :fabric:runServer     # dev dedicated server; /qc works from its console; :forge:runServer for Forge
@@ -380,8 +383,8 @@ Mojang names), so anything touching `BuiltInRegistries.BLOCK` is a gametest inst
 
 | Suite | Files | Covers |
 |---|---|---|
-| JUnit, 38 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest`, `plan/BuildShapeTest`, `plan/QcPlanTest`, `plan/RoadKitTest`, `qc/DistrictTest`, `net/PlanRequestDecodeTest` | the qckit port: a house's frame/floor/door/road/roof, every template x roof x pier kind builds with no missing role, unchosen roles reported together, fallbacks and optional roles, partition overrides (open = gate flag alone), shared planes between buildings, stripped templates and fresh building keys on stamping, pre-rework plans loading as one legacy building; lattice math and residues; the index NBT round trip plus malformed state; the `w`/`g` bit layout and a playlist round trip; shapes and modifiers; partitions, rotation/mirror of flags, normalise/merge, `PlanCodec` round trip; the road contract (7 wide, lanes, joints, corner posts, medallion, plaza post, give-way); a plan request round-trips through the bounded inflate and a gzip bomb is refused |
-| Gametests, 10 tests | `QcGameTests`, `QcPlanGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, an align moves the building, layer 0 and non-creative are refused; a plan (full unit, framework-only unit, cleared cell, road) applies, `/qc undo` restores every block and record, redo re-applies it, a second undo restores it again and a new apply drops the redo stack; plan refusals are user-visible; a qckit house applies with real block states (upright log posts, beams along their axis, a door on the road face, a hip roof, the road) and an empty style is refused naming its roles |
+| JUnit, 40 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest`, `plan/BuildShapeTest`, `plan/QcPlanTest`, `plan/RoadKitTest`, `qc/DistrictTest`, `net/PlanRequestDecodeTest` | the qckit port: a house's frame/floor/door/road/roof, every template x roof x pier kind builds with no missing role, unchosen roles reported together, fallbacks and optional roles, partition overrides (open = gate flag alone), shared planes between buildings, stripped templates and fresh building keys on stamping, pre-rework plans loading as one legacy building, decor on the road and never in a doorway, seeded, an empty decor style placing nothing; lattice math and residues; the index NBT round trip plus malformed state; the `w`/`g` bit layout and a playlist round trip; shapes and modifiers; partitions, rotation/mirror of flags, normalise/merge, `PlanCodec` round trip; the road contract (7 wide, lanes, joints, corner posts, medallion, plaza post, give-way); a plan request round-trips through the bounded inflate and a gzip bomb is refused |
+| Gametests, 10 tests | `QcGameTests`, `QcPlanGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, an align moves the building, layer 0 and non-creative are refused; a plan (full unit, framework-only unit, cleared cell, road) applies, `/qc undo` restores every block and record, redo re-applies it, a second undo restores it again and a new apply drops the redo stack; plan refusals are user-visible; a qckit house applies with real block states (upright log posts, beams along their axis, a door on the road face, a hip roof, the road, street decor) and an empty style is refused naming its roles |
 
 Golden mechanics: baselines are **classpath resources** (`/golden/unit-export-baseline.txt`) inside the test mod,
 so they never reach the shipped jar; comparison is exact, order-sensitive line equality after CRLF/CR -> LF

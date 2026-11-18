@@ -256,7 +256,37 @@ public final class District {
             by.put(p, "road");
         }
 
-        // 5. connections, completed states, checks
+        // 5. street decor round the buildings (decor.py), before the connection pass
+        BlockChoice decor = plan.decorStyle == null || plan.decorStyle.isBlank() ? null : plan.styles().get(plan.decorStyle);
+        if (plan.decorStyle != null && !plan.decorStyle.isBlank()) {
+            if (decor == null || !decor.kind().equals(Roles.DECOR)) {
+                problems.add("decor style '" + plan.decorStyle + "' does not exist or is not a decor style");
+            } else {
+                Set<String> roles = reached.computeIfAbsent(plan.decorStyle, k -> new LinkedHashSet<>());
+                for (Role role : Roles.of(Roles.DECOR)) {
+                    roles.add(role.name());
+                }
+                Map<String, String> templates = new HashMap<>();
+                made.keySet().forEach(k -> templates.put(k, plan.buildings().get(k).template));
+                for (Map.Entry<Integer, Map<UnitPos, BlockChoice>> entry : roadLayers.entrySet()) {
+                    int layer = entry.getKey();
+                    Set<Long> openings = new HashSet<>();
+                    for (Building b : made.values()) {
+                        if (b.groundLayer == layer) {
+                            openings.addAll(b.openings);
+                        }
+                    }
+                    Set<UnitPos> occupied = new HashSet<>();
+                    if (plan.units().peekLayer(layer) != null) {
+                        occupied.addAll(plan.units().peekLayer(layer).keySet());
+                    }
+                    Decor.dress(out, by, decor, Math.max(0, Math.min(100, plan.decorDensity)) / 100.0, plan.decorSeed,
+                            layer, entry.getValue().keySet(), openings, made, templates, occupied);
+                }
+            }
+        }
+
+        // 6. connections, completed states, checks
         BlockStr.connect(out);
         out.replaceAll((p, s) -> BlockStr.complete(s));
         for (Building b : made.values()) {
