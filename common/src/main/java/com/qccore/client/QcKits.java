@@ -179,7 +179,9 @@ public final class QcKits {
 			for (int i = 0; i < RoadStyle.LANES && i < posts.size(); i++) {
 				if (posts.get(i).isJsonArray()) {
 					for (JsonElement element : posts.get(i).getAsJsonArray()) {
-						style.post[i].add(element.getAsString());
+						if (element.isJsonPrimitive()) {
+							style.post[i].add(element.getAsString());
+						}
 					}
 				}
 			}
@@ -246,7 +248,10 @@ public final class QcKits {
 		}
 		JsonArray array = json.getAsJsonArray(key);
 		for (int i = 0; i < into.length && i < array.size(); i++) {
-			into[i] = array.get(i).getAsString();
+			// a hand-edited kit may hold null or a nested value here; that lane stays as it was
+			if (array.get(i).isJsonPrimitive()) {
+				into[i] = array.get(i).getAsString();
+			}
 		}
 	}
 }
