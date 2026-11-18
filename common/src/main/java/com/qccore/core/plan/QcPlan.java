@@ -4,6 +4,7 @@ import com.qccore.core.QcUnit;
 import com.qccore.core.UnitLayers;
 import com.qccore.core.UnitPos;
 import com.qccore.core.UnitSide;
+import com.qccore.core.qc.BlockChoice;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -16,14 +17,20 @@ import java.util.Set;
  * export them as a structure {@code .nbt}.
  *
  * <ul>
- *   <li>{@link #units()}: the QC units to build, with their wall/gate flags (the layer model);</li>
- *   <li>{@link #masks()}: per unit, which of the nine components it builds (absent = all), so a
- *       unit can be planned as "framework only" or "everything but the outer walls";</li>
+ *   <li>{@link #units()}: the QC units to build, with their partition flags (the layer model): on a
+ *       shared side, wall = a party wall, wall + gate = a gate, gate alone = open; no flag leaves the
+ *       side to the building's design;</li>
+ *   <li>{@link #unitBuildings()} and {@link #buildings()}: which building every unit belongs to, and
+ *       each building's template, style name and design overrides (qckit's {@code Plan.building});</li>
+ *   <li>{@link #styles()}: the blocks chosen per style, role by role ({@link BlockChoice}), shared by
+ *       buildings and roads; a template keeps the style names but strips the blocks;</li>
+ *   <li>{@link #masks()}: legacy only - per unit of a {@code qcsimple} building, which of QCSimple's
+ *       nine components it builds (absent = all);</li>
  *   <li>{@link #clears()}: unit cells whose terrain is cleared to air (local y 1..8, plus
  *       {@link #clearMargin} blocks outside every exposed side and above), optionally levelled by
  *       filling the air of the floor plane with {@link #ground};</li>
  *   <li>{@link #roads()}: QC road cells (qckit's 7-wide road), by layer, each naming a road style
- *       from {@link #roadStyles()}.</li>
+ *       from {@link #styles()}.</li>
  * </ul>
  *
  * <p>Registry-free, so it is covered by plain JUnit; {@link PlanCompiler} turns it into blocks.
@@ -36,7 +43,9 @@ public final class QcPlan {
     private final Map<Cell, Integer> masks = new LinkedHashMap<>();
     private final Set<Cell> clears = new LinkedHashSet<>();
     private final Map<Cell, String> roads = new LinkedHashMap<>();
-    private final Map<String, RoadStyle> roadStyles = new LinkedHashMap<>();
+    private final Map<Cell, String> unitBuildings = new LinkedHashMap<>();
+    private final Map<String, BuildingSpec> buildings = new LinkedHashMap<>();
+    private final Map<String, BlockChoice> styles = new LinkedHashMap<>();
     /** Extra blocks cleared outside the exposed sides and above every cleared cell, 0..4. */
     public int clearMargin = 2;
     /** Block id filled into the air of a cleared cell's floor plane; blank = no levelling. */
@@ -49,6 +58,7 @@ public final class QcPlan {
     public void setUnits(UnitLayers units) {
         this.units = units;
         masks.keySet().removeIf(cell -> !hasUnit(cell));
+        unitBuildings.keySet().removeIf(cell -> !hasUnit(cell));
     }
 
     public Map<Cell, Integer> masks() {
@@ -63,8 +73,49 @@ public final class QcPlan {
         return roads;
     }
 
-    public Map<String, RoadStyle> roadStyles() {
-        return roadStyles;
+    /** Unit cell -> the key of the building it belongs to. */
+    public Map<Cell, String> unitBuildings() {
+        return unitBuildings;
+    }
+
+    /** Building key -> its template, style and design overrides. */
+    public Map<String, BuildingSpec> buildings() {
+        return buildings;
+    }
+
+    /** Style name -> the blocks chosen for it (buildings and roads). */
+    public Map<String, BlockChoice> styles() {
+        return styles;
+    }
+
+    /** The building a unit belongs to, or {@code null}. */
+    public String building(Cell cell) {
+        return unitBuildings.get(cell);
+    }
+
+    /** The first free building key: A..Z, then AA, AB, ... */
+    public String nextBuildingKey() {
+        for (int i = 0; ; i++) {
+            String key = keyName(i);
+            if (!buildings.containsKey(key)) {
+                return key;
+            }
+        }
+    }
+
+    private static String keyName(int i) {
+        StringBuilder name = new StringBuilder();
+        int n = i;
+        do {
+            name.insert(0, (char) ('A' + n % 26));
+            n = n / 26 - 1;
+        } while (n >= 0);
+        return name.toString();
+    }
+
+    /** Drops buildings no unit belongs to. */
+    public void pruneBuildings() {
+        buildings.keySet().removeIf(key -> !unitBuildings.containsValue(key));
     }
 
     public boolean isEmpty() {
@@ -88,7 +139,13 @@ public final class QcPlan {
         }
     }
 
-    /** Adds a unit (keeping an existing one and its flags) with the given component mask. */
+    /** Adds a unit (keeping an existing one and its flags) to a building. */
+    public void addUnit(Cell cell, String building) {
+        units.layer(cell.layer()).putIfAbsent(cell.pos(), new QcUnit());
+        unitBuildings.put(cell, building);
+    }
+
+    /** Adds a legacy QCSimple unit with the given component mask. */
     public void addUnit(Cell cell, int mask) {
         units.layer(cell.layer()).putIfAbsent(cell.pos(), new QcUnit());
         setMask(cell, mask);
@@ -109,6 +166,7 @@ public final class QcPlan {
         }
         layer.remove(cell.pos());
         masks.remove(cell);
+        unitBuildings.remove(cell);
         if (layer.isEmpty()) {
             dropEmptyLayer(cell.layer());
         }
@@ -116,8 +174,9 @@ public final class QcPlan {
 
     /**
      * Sets the partition on every shared side between two units of {@code cells}: {@code wall}
-     * without a gate, {@code gate} (a wall with a passage), or {@code open} (no wall at all).
-     * Returns how many shared sides changed.
+     * without a gate, {@code gate} (a wall with a passage), {@code open} (no wall at all, stored as
+     * the gate flag alone) or {@code design} (no flag: the building's partition decides). Returns how
+     * many shared sides changed.
      */
     public int partition(Set<Cell> cells, Partition partition) {
         int changed = 0;
@@ -133,8 +192,8 @@ public final class QcPlan {
                 if (neighbour == null || !cells.contains(Cell.of(other, cell.layer()))) {
                     continue;
                 }
-                boolean wall = partition != Partition.OPEN;
-                boolean gate = partition == Partition.GATE;
+                boolean wall = partition == Partition.WALL || partition == Partition.GATE;
+                boolean gate = partition == Partition.GATE || partition == Partition.OPEN;
                 if (Flags.hasWall(unit, side) != wall || Flags.isGate(unit, side) != gate
                         || Flags.hasWall(neighbour, Flags.opposite(side)) != wall
                         || Flags.isGate(neighbour, Flags.opposite(side)) != gate) {
@@ -149,16 +208,26 @@ public final class QcPlan {
         return changed;
     }
 
-    /** A deep copy (units, flags, masks, clears, roads and styles). */
+    /**
+     * The partition override of a shared side: {@code wall}, {@code gate}, {@code open}, or
+     * {@code null} when the side follows the building's design.
+     */
+    public static String partyOverride(QcUnit unit, UnitSide side) {
+        boolean wall = Flags.hasWall(unit, side);
+        boolean gate = Flags.isGate(unit, side);
+        return wall ? (gate ? "gate" : "wall") : gate ? "open" : null;
+    }
+
+    /** A deep copy (units, flags, buildings, masks, clears, roads and styles). */
     public QcPlan copy() {
         QcPlan copy = new QcPlan();
         copy.units = units.copy();
         copy.masks.putAll(masks);
+        copy.unitBuildings.putAll(unitBuildings);
+        buildings.forEach((k, v) -> copy.buildings.put(k, v.copy()));
         copy.clears.addAll(clears);
         copy.roads.putAll(roads);
-        for (Map.Entry<String, RoadStyle> entry : roadStyles.entrySet()) {
-            copy.roadStyles.put(entry.getKey(), entry.getValue().copy());
-        }
+        styles.forEach((k, v) -> copy.styles.put(k, v.copy()));
         copy.clearMargin = clearMargin;
         copy.ground = ground;
         return copy;
@@ -221,15 +290,17 @@ public final class QcPlan {
         for (Map.Entry<Cell, Integer> entry : masks.entrySet()) {
             out.masks.put(transform.apply(entry.getKey()), entry.getValue());
         }
+        for (Map.Entry<Cell, String> entry : unitBuildings.entrySet()) {
+            out.unitBuildings.put(transform.apply(entry.getKey()), entry.getValue());
+        }
+        buildings.forEach((k, v) -> out.buildings.put(k, v.copy()));
         for (Cell cell : clears) {
             out.clears.add(transform.apply(cell));
         }
         for (Map.Entry<Cell, String> entry : roads.entrySet()) {
             out.roads.put(transform.apply(entry.getKey()), entry.getValue());
         }
-        for (Map.Entry<String, RoadStyle> entry : roadStyles.entrySet()) {
-            out.roadStyles.put(entry.getKey(), entry.getValue().copy());
-        }
+        styles.forEach((k, v) -> out.styles.put(k, v.copy()));
         out.clearMargin = clearMargin;
         out.ground = ground;
         return out;
@@ -237,9 +308,10 @@ public final class QcPlan {
 
     /**
      * Merges another plan into this one: its units overwrite units and roads in the same cell (with
-     * their flags and masks), its roads overwrite units and roads in the same cell, its clears are
-     * added, its road styles are added unless a style of that name exists. A cell is a unit or a road,
-     * never both. Units placed next to existing ones keep the existing partitions.
+     * their flags, masks and building tags), its roads overwrite units and roads in the same cell,
+     * its clears are added; its buildings and styles are added unless one of that name exists (so
+     * blocks already chosen win over a template's empty slots). A cell is a unit or a road, never
+     * both. Units placed next to existing ones keep the existing partitions.
      */
     public void merge(QcPlan other) {
         for (int layer : other.units.layerKeys()) {
@@ -247,9 +319,16 @@ public final class QcPlan {
                 Cell cell = Cell.of(entry.getKey(), layer);
                 units.layer(layer).put(entry.getKey(), new QcUnit(entry.getValue()));
                 setMask(cell, other.mask(cell));
+                String building = other.unitBuildings.get(cell);
+                if (building == null) {
+                    unitBuildings.remove(cell);
+                } else {
+                    unitBuildings.put(cell, building);
+                }
                 roads.remove(cell);
             }
         }
+        other.buildings.forEach((k, v) -> buildings.putIfAbsent(k, v.copy()));
         clears.addAll(other.clears);
         for (Map.Entry<Cell, String> entry : other.roads.entrySet()) {
             if (hasUnit(entry.getKey()) && !other.hasUnit(entry.getKey())) {
@@ -257,9 +336,38 @@ public final class QcPlan {
             }
             roads.put(entry.getKey(), entry.getValue());
         }
-        for (Map.Entry<String, RoadStyle> entry : other.roadStyles.entrySet()) {
-            roadStyles.putIfAbsent(entry.getKey(), entry.getValue().copy());
+        other.styles.forEach((k, v) -> styles.putIfAbsent(k, v.copy()));
+    }
+
+    /**
+     * A copy whose buildings are renamed to keys free in {@code target}, so stamping a template
+     * twice makes two buildings, not one building in two places.
+     */
+    public QcPlan withFreshBuildings(QcPlan target) {
+        QcPlan out = copy();
+        out.buildings.clear();
+        out.unitBuildings.clear();
+        QcPlan taken = new QcPlan();
+        taken.buildings.putAll(target.buildings);
+        Map<String, String> renamed = new HashMap<>();
+        for (Map.Entry<String, BuildingSpec> entry : buildings.entrySet()) {
+            String key = taken.nextBuildingKey();
+            taken.buildings.put(key, entry.getValue());
+            renamed.put(entry.getKey(), key);
+            out.buildings.put(key, entry.getValue().copy());
         }
+        for (Map.Entry<Cell, String> entry : unitBuildings.entrySet()) {
+            out.unitBuildings.put(entry.getKey(), renamed.getOrDefault(entry.getValue(), entry.getValue()));
+        }
+        return out;
+    }
+
+    /** A copy with every style's blocks removed: the form a template is saved in. */
+    public QcPlan stripped() {
+        QcPlan out = copy();
+        out.styles.replaceAll((k, v) -> v.stripped());
+        out.ground = "";
+        return out;
     }
 
     /** Road cells grouped by layer, in insertion order. */
@@ -274,7 +382,8 @@ public final class QcPlan {
 
     /** One-line summary for the HUD and the tools screen. */
     public String summary() {
-        return units.unitCount() + " unit(s), " + clears.size() + " cleared cell(s), " + roads.size() + " road cell(s)";
+        return units.unitCount() + " unit(s) in " + buildings.size() + " building(s), " + roads.size() + " road cell(s), "
+                + clears.size() + " cleared cell(s)";
     }
 
     private void dropEmptyLayer(int layer) {
@@ -290,7 +399,7 @@ public final class QcPlan {
 
     /** How {@link #partition} sets a shared side. */
     public enum Partition {
-        WALL, GATE, OPEN
+        WALL, GATE, OPEN, DESIGN
     }
 
     /** Rotation/mirror/offset of one cell, and of the side a flag points at. */

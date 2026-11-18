@@ -2,10 +2,11 @@ package com.qccore.core.plan;
 
 import com.qccore.core.QcUnit;
 import com.qccore.core.UnitExporter;
+import com.qccore.core.UnitLayers;
 import com.qccore.core.UnitPos;
 import com.qccore.core.palette.BlockPalette;
+import com.qccore.core.qc.District;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,10 +21,11 @@ import net.minecraft.world.level.block.state.BlockState;
  * apply, the client's block preview and the {@code .nbt} export.
  *
  * <ol>
- *   <li>Units: the masked export of {@link UnitExporter} (all units count as neighbours, each
- *       writes only its own components).</li>
- *   <li>Roads: {@link RoadKit} per layer, giving way to every column a unit block already stands on
- *       and never overwriting a unit block.</li>
+ *   <li>Buildings and roads: {@link District}, the qckit generator, for every unit of a qckit
+ *       building and every road cell, parsed leniently ({@link BlockIds#parseLenient}).</li>
+ *   <li>Legacy units (buildings of template {@code qcsimple}, or units with no building): the
+ *       masked export of {@link UnitExporter} with the session palette, as before the rework; they
+ *       never overwrite a generated block.</li>
  *   <li>Clears: local y 1..8 of every cleared cell plus the margin outside its exposed sides and
  *       above it, and the 7 blocks of headroom over every road column, minus whatever the plan
  *       places there.</li>
@@ -36,9 +38,14 @@ public final class PlanCompiler {
     private PlanCompiler() {
     }
 
-    /** The compiled plan. {@code blocks} keeps insertion order: units, then roads. */
+    /**
+     * The compiled plan. {@code blocks} keeps insertion order. {@code problems} stop an apply;
+     * {@code notes} are worth showing; {@code reached}/{@code missing} are the roles each style's
+     * buildings and roads used, and the required ones with no block.
+     */
     public record Compiled(Map<BlockPos, BlockState> blocks, Set<BlockPos> air, Map<BlockPos, BlockState> ground,
-                           List<BlockPos> unitOrigins, List<String> problems) {
+                           List<BlockPos> unitOrigins, List<String> problems, List<String> notes,
+                           Map<String, Set<String>> reached, Map<String, Set<String>> missing) {
 
         /** A structure-style block map: blocks, then ground, then (optionally) air. */
         public Map<BlockPos, BlockState> forExport(boolean includeAir) {
@@ -55,59 +62,56 @@ public final class PlanCompiler {
 
     public static Compiled compile(QcPlan plan, BlockPalette palette, BlockPos anchor) {
         List<String> problems = new ArrayList<>();
-        Map<BlockPos, BlockState> blocks = UnitExporter.export(plan.units(), palette, anchor,
-                (dx, dy, dz) -> plan.mask(new Cell(dx, dy, dz)));
+        Map<BlockPos, BlockState> blocks = new LinkedHashMap<>();
 
-        List<BlockPos> origins = new ArrayList<>();
-        for (int layer : plan.units().layerKeys()) {
-            for (UnitPos pos : plan.units().peekLayer(layer).keySet()) {
-                origins.add(origin(anchor, new Cell(pos.x(), layer, pos.z())));
+        // 1. qckit buildings and roads
+        District.Result district = District.build(plan);
+        problems.addAll(district.problems());
+        Set<String> unknown = new LinkedHashSet<>();
+        for (Map.Entry<BlockPos, String> entry : district.blocks().entrySet()) {
+            BlockState state = BlockIds.parseLenient(entry.getValue());
+            if (state == null) {
+                unknown.add(entry.getValue().contains("[") ? entry.getValue().substring(0, entry.getValue().indexOf('['))
+                        : entry.getValue());
+                continue;
             }
+            blocks.put(anchor.offset(entry.getKey()), state);
+        }
+        for (String id : unknown) {
+            problems.add("'" + id + "' is not a block");
         }
 
+        // 2. legacy QCSimple units
+        UnitLayers legacy = new UnitLayers();
+        List<BlockPos> origins = new ArrayList<>();
+        for (int layer : plan.units().layerKeys()) {
+            for (Map.Entry<UnitPos, QcUnit> entry : plan.units().peekLayer(layer).entrySet()) {
+                Cell cell = Cell.of(entry.getKey(), layer);
+                origins.add(origin(anchor, cell));
+                if (!District.generates(plan, cell)) {
+                    legacy.layer(layer).put(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+        if (legacy.unitCount() > 0) {
+            UnitExporter.export(legacy, palette, anchor, (dx, dy, dz) -> plan.mask(new Cell(dx, dy, dz)))
+                    .forEach(blocks::putIfAbsent);
+        }
+
+        // 3. clears and road headroom
         Set<BlockPos> air = new LinkedHashSet<>();
-        Map<Integer, Map<UnitPos, String>> roadLayers = plan.roadLayers();
-        for (Map.Entry<Integer, Map<UnitPos, String>> layerEntry : roadLayers.entrySet()) {
-            int layer = layerEntry.getKey();
-            BlockPos base = anchor.offset(0, layer * 8, 0);
-            Map<UnitPos, RoadStyle> cells = new LinkedHashMap<>();
-            for (Map.Entry<UnitPos, String> road : layerEntry.getValue().entrySet()) {
-                RoadStyle style = plan.roadStyles().get(road.getValue());
-                if (style == null || !style.isComplete()) {
-                    problems.add("road style '" + road.getValue() + "' is missing or has an empty floor lane");
-                    continue;
-                }
-                cells.put(road.getKey(), style);
-            }
-            Set<Long> columns = new HashSet<>();
-            for (BlockPos pos : blocks.keySet()) {
-                if (pos.getY() == base.getY()) {
-                    columns.add(RoadKit.key(pos.getX() - base.getX(), pos.getZ() - base.getZ()));
-                }
-            }
-            Map<BlockPos, String> road = RoadKit.build(cells, columns);
-            Set<String> unknown = new LinkedHashSet<>();
-            for (Map.Entry<BlockPos, String> entry : road.entrySet()) {
-                BlockState state = BlockIds.parse(entry.getValue());
-                if (state == null) {
-                    unknown.add(entry.getValue());
-                    continue;
-                }
-                blocks.putIfAbsent(base.offset(entry.getKey()), state);
-            }
-            for (String id : unknown) {
-                problems.add("road block '" + id + "' is not a block");
-            }
-            for (long column : RoadKit.networkArea(cells.keySet()).keySet()) {
+        for (Map.Entry<Integer, Map<UnitPos, String>> layerEntry : plan.roadLayers().entrySet()) {
+            BlockPos base = anchor.offset(0, layerEntry.getKey() * 8, 0);
+            for (long column : RoadKit.networkArea(layerEntry.getValue().keySet()).keySet()) {
                 for (int y = 1; y <= 7; y++) {
                     air.add(base.offset(RoadKit.x(column), y, RoadKit.z(column)));
                 }
             }
         }
-
         Map<BlockPos, BlockState> ground = new LinkedHashMap<>();
-        BlockState groundState = RoadStyle.blank(plan.ground) ? null : BlockIds.parse(plan.ground);
-        if (!RoadStyle.blank(plan.ground) && groundState == null) {
+        boolean noGround = plan.ground == null || plan.ground.isBlank();
+        BlockState groundState = noGround ? null : BlockIds.parse(plan.ground);
+        if (!noGround && groundState == null) {
             problems.add("ground block '" + plan.ground + "' is not a block");
         }
         int margin = Math.max(0, Math.min(QcPlan.MAX_CLEAR_MARGIN, plan.clearMargin));
@@ -136,7 +140,8 @@ public final class PlanCompiler {
         air.removeAll(blocks.keySet());
         ground.keySet().removeAll(blocks.keySet());
         ground.keySet().removeAll(air);
-        return new Compiled(blocks, air, ground, origins, problems);
+        return new Compiled(blocks, air, ground, origins, problems, district.notes(), district.reached(),
+                district.missing());
     }
 
     /** World origin of a cell: {@code anchor + 8 * (x, layer, z)}. */
@@ -148,5 +153,17 @@ public final class PlanCompiler {
     public static QcUnit unit(QcPlan plan, Cell cell) {
         Map<UnitPos, QcUnit> layer = plan.units().peekLayer(cell.layer());
         return layer == null ? null : layer.get(cell.pos());
+    }
+
+    /** Whether the plan has units the legacy QCSimple exporter builds. */
+    public static boolean hasLegacyUnits(QcPlan plan) {
+        for (int layer : plan.units().layerKeys()) {
+            for (UnitPos pos : plan.units().peekLayer(layer).keySet()) {
+                if (!District.generates(plan, Cell.of(pos, layer))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

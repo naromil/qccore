@@ -81,7 +81,7 @@ public final class QcUi {
 	/** {@link com.qccore.core.plan.QcPlan#summary()} shortened for narrow panels: "3 units · 2 cleared · 0 road". */
 	public static String planSummary() {
 		return QcClientState.plan.summary().replaceAll("^1 unit\\(s\\)", "1 unit").replace(" unit(s)", " units")
-				.replace(" cleared cell(s)", " cleared").replace(" road cell(s)", " road").replace(", ", " · ");
+				.replace(" cleared cell(s)", " cleared").replace(" road cell(s)", " road").replace(" building(s)", " bldg").replace(", ", " · ");
 	}
 
 	public static Tooltip tip(String text) {
@@ -96,9 +96,9 @@ public final class QcUi {
 	/** A short label for the tool tiles. */
 	public static String shortName(QcTool tool) {
 		return switch (tool) {
-			case UNITS -> "units";
+			case UNITS -> "building";
 			case ERASE -> "erase";
-			case PAINT -> "paint";
+			case ASSIGN -> "assign";
 			case WALLS -> "walls";
 			case GATES -> "gates";
 			case OPEN -> "open";
@@ -111,14 +111,14 @@ public final class QcUi {
 	/** What a tool does, for its tooltip. */
 	public static String describe(QcTool tool) {
 		return switch (tool) {
-			case UNITS -> "Units: add QC units that build the selected components";
+			case UNITS -> "Building: add QC units to the active building (a new one if none is active)";
 			case ERASE -> "Erase: remove planned units, roads and cleared cells";
-			case PAINT -> "Paint: set the selected components on planned units";
+			case ASSIGN -> "Assign: move planned units into the active building";
 			case WALLS -> "Partition walls: inner walls on every shared side in the shape";
 			case GATES -> "Partition gates: inner walls with a gate (rooms)";
 			case OPEN -> "Partition open: no partition inside the shape (a hall)";
 			case CLEAR -> "Clear terrain: carve the cells, level the floor if a ground block is set";
-			case ROAD -> "Road: lay a QC road in the style chosen under Kits & roads";
+			case ROAD -> "Road: lay a QC road in the active road style (blocks in the block chooser)";
 			case TEMPLATE -> "Template: stamp the chosen template; R turns it";
 		};
 	}
@@ -126,9 +126,9 @@ public final class QcUi {
 	/** The item drawn on a tool's tile and in the HUD. */
 	public static ItemStack icon(QcTool tool) {
 		return switch (tool) {
-			case UNITS -> blockIcon(QcClientState.palette.frameworkBlock().getRawId(), Items.POLISHED_DEEPSLATE);
+			case UNITS -> blockIcon(QcClientState.activeStyleBlock("frame"), Items.BRICKS);
 			case ERASE -> new ItemStack(Items.BARRIER);
-			case PAINT -> new ItemStack(Items.BRUSH);
+			case ASSIGN -> new ItemStack(Items.BRUSH);
 			case WALLS -> new ItemStack(Items.DEEPSLATE_BRICK_WALL);
 			case GATES -> new ItemStack(Items.SPRUCE_FENCE_GATE);
 			case OPEN -> new ItemStack(Items.GLASS);

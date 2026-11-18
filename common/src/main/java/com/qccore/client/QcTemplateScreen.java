@@ -12,8 +12,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 /**
- * QC unit templates: pick one to stamp with the template tool, save the current plan as a template,
- * adopt the palette a template was designed with, or delete one. The templates are a clickable
+ * QC unit templates: pick one to stamp with the template tool, save the current plan as a template
+ * (geometry and style names only: the chosen blocks are stripped), or delete one. A stamped
+ * template's styles are filled in the block chooser. The templates are a clickable
  * list (scroll with the wheel, double-click to use at once); the actions act on the selected one.
  */
 public class QcTemplateScreen extends Screen {
@@ -86,8 +87,9 @@ public class QcTemplateScreen extends Screen {
 				.icon(() -> new ItemStack(Items.STRUCTURE_BLOCK), false).accent(QcUi.color(QcTool.TEMPLATE))
 				.tip("Switch to the template tool with this template (double-click a row does the same)"));
 		y += 20;
-		this.addRenderableWidget(new Chip(this.right + 4, y, half, ROW - 2, "Use + palette", () -> use(true))
-				.tip("Also adopt the nine components the template was saved with"));
+		this.addRenderableWidget(new Chip(this.right + 4, y, half, ROW - 2, "Choose blocks…",
+				() -> this.minecraft.setScreen(new QcBlockChooserScreen(this)))
+				.tip("Fill in the blocks of the plan's styles (a stamped template brings empty ones)"));
 		this.addRenderableWidget(new Chip(this.right + 6 + half, y, half, ROW - 2, "Delete", this::delete)
 				.accent(QcUi.ERROR).tip("Delete the template file"));
 
@@ -101,7 +103,7 @@ public class QcTemplateScreen extends Screen {
 		this.addRenderableWidget(this.nameField);
 		y += ROW + 2;
 		this.addRenderableWidget(new Chip(this.right + 4, y, inner, ROW, "Save plan as template", this::save)
-				.accent(QcUi.APPLY).tip("Saves units, flags, masks, roads, clears and the palette"));
+				.accent(QcUi.APPLY).tip("Saves buildings, partitions, roads and clears; the chosen blocks are stripped"));
 
 		this.addRenderableWidget(new Chip(this.right + COLUMN - 100, this.height - 22, 100, 18, "Done",
 				() -> this.minecraft.setScreen(this.parent)).tip("Back to the tools (Esc)"));
@@ -195,7 +197,7 @@ public class QcTemplateScreen extends Screen {
 		this.rebuildWidgets();
 	}
 
-	private void use(boolean adoptPalette) {
+	private void use(boolean unused) {
 		if (this.names.isEmpty()) {
 			return;
 		}
@@ -207,10 +209,6 @@ public class QcTemplateScreen extends Screen {
 			QcClientState.templateRotation = 0;
 			QcClientState.tool = QcTool.TEMPLATE;
 			QcClientState.points.clear();
-			if (adoptPalette && template.palette() != null) {
-				QcTemplates.adoptPalette(template.palette());
-				QcClientState.changed();
-			}
 			this.footer = "template tool: " + name + " (" + template.plan().summary() + ")";
 			this.footerError = false;
 		} catch (RuntimeException e) {
@@ -249,7 +247,7 @@ public class QcTemplateScreen extends Screen {
 			return;
 		}
 		try {
-			Path file = QcTemplates.save(this.nameField.getValue(), QcClientState.plan, QcClientState.palette);
+			Path file = QcTemplates.save(this.nameField.getValue(), QcClientState.plan);
 			this.footer = "saved " + file.getFileName();
 			this.footerError = false;
 			this.names = QcTemplates.list();

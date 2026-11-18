@@ -1,49 +1,77 @@
 # Repository Guidelines
 
 QCCore is a **Minecraft 1.20.1 mod for Fabric and Forge** (mod id `qccore`, package root `com.qccore`), built
-from one loader-neutral code base in Mojang's names (see *Multi-loader layout* below). It ports the QCSimple desktop
-pipeline into an in-world editor: players configure the nine QC Unit components from `<gameDir>/schematics`, build a
-multi-layer **plan** with the crosshair (Effortless-Building-style tools and shapes, keybinds, wireframes and ghost
-blocks), then export it as a vanilla structure `.nbt` or, in creative, apply it to the world in one undoable step and
-re-align whole buildings to `(8x+a, 8y+b, 8z+c)`. The QC building rules come from the user's `naromil/worldedit`
-repo (`builds/QCSYSTEM.md`, the `quarterchunk-buildings` skill, `quarterchunk/qckit/`); the road template is a port
-of qckit's `road.py`.
+from one loader-neutral code base in Mojang's names (see *Multi-loader layout* below). It is an in-world editor for QC
+buildings: players build a multi-layer **plan** with the crosshair (Effortless-Building-style tools and shapes,
+keybinds, wireframes and ghost blocks) out of **buildings** and **roads**, choose the blocks of every role in a block
+chooser, then export it as a vanilla structure `.nbt` or, in creative, apply it to the world in one undoable step and
+re-align whole buildings to `(8x+a, 8y+b, 8z+c)`.
 
-`QCCORE_IN_WORLD_QC_UNIT_EDITOR_PLAN.md` (repo root) is the **spec/design document of record**: ordered steps, the
-1.20.1 API facts the code relies on (in Yarn names; the code now uses Mojang names), every user-visible failure message and the verification procedure.
-`README.md` is the short user-facing version; the class-level Javadoc on the `core`, `world`, `net` and `client`
-types is the third source. Read all three before changing behaviour.
+**The QC rules come from qckit, not QCSimple.** The newest rules live in the user's `naromil/worldedit` repo
+(`~/Tools/worldedit`: `builds/QCSYSTEM.md`, the `quarterchunk-buildings` skill, `quarterchunk/qckit/` - `building.py`,
+`facades.py`, `styles.py`, `road.py`, `plan.py`); `core/qc` is a port of them. QCSimple's nine-component model
+(column, row, inner column, ...) is outdated and survives only as the **legacy** `qcsimple` template, so old plans,
+layouts and the golden parity tests keep working. When the rules change, port the change from qckit; do not invent
+rules here and do not add preset blocks or kits (the user's rule: "no default blocks"). Players use qckit's templates
+or save their own: a saved template is geometry only, its block choices stripped, and is filled in with the block
+chooser when it is applied.
+
+**Modularity is a requirement** (the user: "it should be highly modular in any case"): templates (`Templates`),
+facade masks and pieces (`Facades`), roofs (`Roofs`) and role sets (`Roles`) are registries; a new one is a
+`register` call, never a change to the generator or the screens, which list whatever is registered.
+
+`README.md` is the short user-facing version; the class-level Javadoc on the `core`, `core/qc`, `world`, `net` and
+`client` types is the second source. Read both before changing behaviour. (`QCCORE_IN_WORLD_QC_UNIT_EDITOR_PLAN.md`,
+the original QCSimple-port spec, is no longer in the repo.)
 
 ## Project Overview
 
-- **Purpose:** replace the QCSimple JavaFX canvas with crosshair editing. There is no 2D editor screen; the GUI is
-  the IO/config screens (`QcConfigScreen`, `QcFileBrowserScreen`, `QcSaveScreen`, `QcAlignScreen`) plus the planning
-  screens (`QcToolsScreen` hub on B, `QcTemplateScreen`, `QcKitScreen`). All of them and `QcHud` share the flat
+- **Purpose:** crosshair editing of qckit buildings and roads. There is no 2D editor screen; the GUI is
+  the IO/config screens (`QcConfigScreen` = lattice + layouts + legacy palette, `QcFileBrowserScreen`, `QcSaveScreen`,
+  `QcAlignScreen`) plus the planning screens (`QcToolsScreen` hub on B with the Building panel, `QcDesignScreen`
+  template/roof/facades/piers/partition/doors/lights of the active building, `QcBlockChooserScreen` styles x roles with
+  kits, `QcBlockPickerScreen` searchable block grid, `QcTemplateScreen`). All of them and `QcHud` share the flat
   dark look of `client/QcUi` (panels, `Chip` buttons with a live selected state, `Stepper` number widgets,
   status pill, tool colours/icons); the tools screen lays out all choices at once and must fit a 427x240 GUI.
-- **Plan model (`core/plan/`):** `QcPlan` = units (`UnitLayers`) + per-unit `ComponentMask` (absent = all nine) +
-  cleared cells (`clearMargin` 0..4, optional `ground` fill of the floor plane) + road cells naming a `RoadStyle`
-  (lanes 1..4, joint, over, post, medallion, centre; ids may carry states, parsed by `BlockIds`). `BuildShape`
-  (single/line/floor/ring/box/hollow box) and `Modifiers` (array then mirror) produce `Cell(x, layer, z)` sets;
-  `QcPlan.transformed/normalized/merge` rotate/mirror/move plans with their flags (templates). `PlanCompiler` is the
-  one plan -> blocks conversion (server apply, client ghost preview, `.nbt` export): masked `UnitExporter.export`,
-  then `RoadKit` per layer (gives way to unit blocks, `putIfAbsent`), then clears + 7 blocks of road headroom as air,
-  then ground. `PlanCodec` is the wire/file format. All of `core/plan` except `BlockIds`/`PlanCompiler` is
-  registry-free and JUnit-tested.
+- **Plan model (`core/plan/`):** `QcPlan` = units (`UnitLayers`, flags = partition overrides: wall = party wall,
+  wall+gate = gate, gate alone = open, none = the design's partition) + `unitBuildings` (cell -> building key) +
+  `buildings` (key -> `BuildingSpec`: template, style name, design overrides) + `styles` (name -> `core/qc/BlockChoice`:
+  kind `building`|`road` and role -> block id, shared by buildings and roads) + road cells naming a road style +
+  cleared cells (`clearMargin` 0..4, optional `ground`) + legacy per-unit `ComponentMask` (only for `qcsimple` units).
+  `BuildShape` and `Modifiers` produce `Cell(x, layer, z)` sets; `QcPlan.transformed/normalized/merge` move plans
+  with their flags and tags, `withFreshBuildings` renames a template's buildings before a stamp, `stripped()` empties
+  every style (the template form). `PlanCompiler` is the one plan -> blocks conversion (server apply, client ghost
+  preview, `.nbt` export): `core/qc/District` for every qckit building and road (parsed with
+  `BlockIds.parseLenient`, which drops properties a block does not have), then the masked legacy `UnitExporter.export`
+  for `qcsimple` units (`putIfAbsent`), then clears + 7 blocks of road headroom as air, then ground. Unchosen required
+  roles are compile problems ("style 'x' has no block for frame, ..."); doors onto nothing, unreachable units and road
+  collisions are notes. `PlanCodec` is the wire/file format and loads pre-rework plans (units -> one `qcsimple`
+  building, lane-list `roadStyles` -> road styles). Everything in `core/plan` and `core/qc` except
+  `BlockIds`/`PlanCompiler` is registry-free and JUnit-tested.
+- **qckit port (`core/qc/`):** `Building` (building.py: floor, faces, framework, capitals, doors, portal, stairs,
+  lights, rows, piers dense/2x2/thick, plinth, roofs, crown), `Facades` (the flat masks and the 14 depth pieces of
+  facades.py, relief kept or dropped whole), `Roofs` (hip, gable, gambrel, mansard, flat, garden, none), `Templates`
+  (the 16 qckit templates as option maps, plus `qcsimple`), `Design` (template + overrides, validated), `Roles`
+  (building and road role sets, optionality, fallbacks), `BlockChoice` (a style), `StyleReader` (records reached and
+  missing roles), `BlockStr` (blocks.py: stair/slab/door/cornice states, `oriented`, the connection pass),
+  `District` (plan.py's build: generation, road layout round doors and thick columns, the outward-decoration
+  merge, checks). The ground storey of a building is its lowest layer; a column whose lowest unit stands higher is a
+  span. qckit's decor.py (street props) and probe.py are not ported.
 - **Domain:** a **QC Unit** is a 9x9x9 block cell with a 7x7x7 interior. Units are spaced **8 blocks apart** on every
   axis, so neighbours *share* the boundary plane (local `0` of one unit is local `8` of the next); unit origins
   satisfy `x = 8*dx + anchorX` (same for `y`, `z`) and unit-local `(x, y, z)` lands at `absX = dx*8 + x`,
   `absY = dy*8 + y`, `absZ = dz*8 + z`. **Layers start at 1**: layer `dy` is the row based at `anchor + 8*dy`, and
   layer 1 is the player's own cell when the editor is entered.
-- **Nine components** in `core/palette/`, fixed order `frameworkBlock, rowBlock, columnBlock, wallBlock,
+- **Legacy nine components** (QCSimple, `qcsimple` template only) in `core/palette/`, fixed order `frameworkBlock, rowBlock, columnBlock, wallBlock,
   floorBlock` (block ids, seeded by `Defaults.applyTo` with `polished_deepslate`, `chiseled_deepslate`, `spruce_log`,
   `deepslate_tiles`, `spruce_planks`) then `innerWall, gate, outerWall` (all `deepslate_bricks`) and `innerColumn`
   (`stripped_spruce_log`). Seeded sizes `7x7x3`/`7x7x3`/`7x7x3`/`3x7x3`; `isValidSize` accepts inner wall/gate
   `7x7x1` or `7x7x3`, outer wall `7x7x1..7x7x3`, inner column `3x7x3`.
 - **Vanilla `.nbt` only** - component files and saved layouts are regular structure files
   (`{DataVersion, size, palette, blocks, entities}`); there is no `.litematic` or `.schem` reader.
-- **Byte-for-byte parity with QCSimple** is the pipeline's acceptance criterion: the export and import dumps are
-  pinned against QCSimple's golden baselines, copied verbatim into `fabric/src/gametest/resources/golden/`.
+- **Byte-for-byte parity with QCSimple** is the acceptance criterion of the *legacy* pipeline only: the export and
+  import dumps are pinned against QCSimple's golden baselines, copied verbatim into
+  `fabric/src/gametest/resources/golden/`. The qckit generator is measured against qckit's behaviour, not QCSimple's.
 
 ## Architecture & Data Flow
 
@@ -191,10 +219,11 @@ Bit layout of `w`/`g`, identical in `LayersCodec`, `QcUnitRecord` and `QcOverlay
 | `fabric/src/main/` | `com.qccore.fabric` glue + `fabric.mod.json`, `qccore.client.mixins.json` |
 | `forge/src/main/` | `com.qccore.forge` glue + `META-INF/mods.toml`, `pack.mcmeta` |
 | `common/src/main/java/com/qccore/client/` | session, keybinds, crosshair interaction, overlay, HUD, the screens, `QcSchematics` |
-| `common/src/main/java/com/qccore/core/plan/` | the plan model: `QcPlan`, `Cell`, `BuildShape`, `Modifiers`, `ComponentMask`, `Flags`, `RoadStyle`, `RoadKit`, `BlockIds`, `PlanCompiler` |
+| `common/src/main/java/com/qccore/core/qc/` | the qckit port: `Building`, `Facades`, `Roofs`, `Templates`, `Design`, `Roles`/`Role`, `BlockChoice`, `StyleReader`, `BlockStr`, `District` (registries for templates, facades, roofs and role sets) |
+| `common/src/main/java/com/qccore/core/plan/` | the plan model: `QcPlan`, `Cell`, `BuildShape`, `Modifiers`, `ComponentMask` (legacy), `Flags`, `BuildingSpec`, `RoadKit`, `BlockIds`, `PlanCompiler` |
 | `common/src/test/java/com/qccore/core/` | JUnit tests over registry-free logic (`plan/` holds the shape, plan and road tests) |
 | `common/src/test/java/com/qccore/net/` | `PlanRequestDecodeTest`: the bounded inflate of a plan request |
-| `fabric/src/gametest/java/com/qccore/gametest/` | 9 gametests plus `TestFixtures` (fixtures + golden plumbing) |
+| `fabric/src/gametest/java/com/qccore/gametest/` | 10 gametests plus `TestFixtures` (fixtures + golden plumbing) |
 | `fabric/src/gametest/resources/` | the `qccore-gametest` mod metadata and `golden/unit-{export,import}-baseline.txt` |
 
 There is no separate client source set any more: client classes live in `common` next to the server code and are
@@ -205,8 +234,8 @@ it only behind `FMLEnvironment.dist == Dist.CLIENT` / `DistExecutor`, the Fabric
 
 ```bash
 ./gradlew build                 # all projects: :common:test, :fabric:runGameTest (through check), both remapJars
-./gradlew :common:test          # the 31 JUnit tests: no game, no block registry
-./gradlew :fabric:runGameTest   # the 9 gametests in a real dev server world, ending "All 9 required tests passed :)"
+./gradlew :common:test          # the 38 JUnit tests: no game, no block registry
+./gradlew :fabric:runGameTest   # the 10 gametests in a real dev server world, ending "All 10 required tests passed :)"
 ./gradlew :fabric:runClient     # dev Fabric client (needs a display); :forge:runClient for Forge
 ./gradlew :fabric:runServer     # dev dedicated server; /qc works from its console; :forge:runServer for Forge
 ./gradlew :forge:compileJava    # compile the Forge glue (and common) only
@@ -276,6 +305,15 @@ dumps of a failing golden test). Loom's wiring adds `acceptGameTestEula`/`delete
   ported `putIfAbsent` into `put` silently changes the output.
 - **Component masks must not change the plain export.** `UnitExporter.export(layers, palette, origin)` delegates to
   the masked overload with `ComponentMask.ALL`, which calls every component in the same order; the golden tests pin it.
+- **qckit is the source of truth for the generator.** `core/qc` mirrors qckit function by function (method names
+  and order follow `building.py`/`facades.py`/`plan.py`); keep it a faithful port and port qckit changes rather
+  than diverging. Plan-local storeys are absolute layers: qckit's `s == 0` is `s == groundLayer`.
+- **No default blocks, anywhere.** A role resolves to its own block, else its fallback role, else nothing; required
+  roles that a design reaches unset are a refusal that names them. Never add preset styles, kits or a stand-in block.
+- **Templates carry no blocks.** `QcTemplates.save` writes `plan.stripped().normalized()`; stamping merges styles
+  with `putIfAbsent`, so blocks the player already chose for a style name win over a template's empty slot.
+- **Partition flags are tri-state overrides**: wall = party wall, wall+gate = gate, gate alone = open, none = the
+  building design's partition. The legacy exporter needs the wall bit for anything, so "open" exports nothing there.
 - **Roads own only the 7-wide interior plus arm mouths** (QCSYSTEM.md): never the four corner posts or a closed
   plane, and they give way to unit blocks. Keep `RoadKit` a faithful port of qckit `road.py`; there are no preset road
   styles or kits, by the user's rule ("no default blocks").
@@ -342,8 +380,8 @@ Mojang names), so anything touching `BuiltInRegistries.BLOCK` is a gametest inst
 
 | Suite | Files | Covers |
 |---|---|---|
-| JUnit, 31 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest`, `plan/BuildShapeTest`, `plan/QcPlanTest`, `plan/RoadKitTest`, `net/PlanRequestDecodeTest` | lattice math and residues; the index NBT round trip plus malformed state; the `w`/`g` bit layout and a playlist round trip; shapes and modifiers; partitions, rotation/mirror of flags, normalise/merge, `PlanCodec` round trip; the road contract (7 wide, lanes, joints, corner posts, medallion, plaza post, give-way); a plan request round-trips through the bounded inflate and a gzip bomb is refused |
-| Gametests, 9 tests | `QcGameTests`, `QcPlanGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, an align moves the building, layer 0 and non-creative are refused; a plan (full unit, framework-only unit, cleared cell, road) applies, `/qc undo` restores every block and record, redo re-applies it, a second undo restores it again and a new apply drops the redo stack; plan refusals are user-visible |
+| JUnit, 38 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest`, `plan/BuildShapeTest`, `plan/QcPlanTest`, `plan/RoadKitTest`, `qc/DistrictTest`, `net/PlanRequestDecodeTest` | the qckit port: a house's frame/floor/door/road/roof, every template x roof x pier kind builds with no missing role, unchosen roles reported together, fallbacks and optional roles, partition overrides (open = gate flag alone), shared planes between buildings, stripped templates and fresh building keys on stamping, pre-rework plans loading as one legacy building; lattice math and residues; the index NBT round trip plus malformed state; the `w`/`g` bit layout and a playlist round trip; shapes and modifiers; partitions, rotation/mirror of flags, normalise/merge, `PlanCodec` round trip; the road contract (7 wide, lanes, joints, corner posts, medallion, plaza post, give-way); a plan request round-trips through the bounded inflate and a gzip bomb is refused |
+| Gametests, 10 tests | `QcGameTests`, `QcPlanGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, an align moves the building, layer 0 and non-creative are refused; a plan (full unit, framework-only unit, cleared cell, road) applies, `/qc undo` restores every block and record, redo re-applies it, a second undo restores it again and a new apply drops the redo stack; plan refusals are user-visible; a qckit house applies with real block states (upright log posts, beams along their axis, a door on the road face, a hip roof, the road) and an empty style is refused naming its roles |
 
 Golden mechanics: baselines are **classpath resources** (`/golden/unit-export-baseline.txt`) inside the test mod,
 so they never reach the shipped jar; comparison is exact, order-sensitive line equality after CRLF/CR -> LF

@@ -1,6 +1,8 @@
 package com.qccore.core.plan;
 
 import com.qccore.core.UnitPos;
+import com.qccore.core.qc.BlockChoice;
+import com.qccore.core.qc.Roles;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
@@ -16,20 +18,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** The road contract of qckit's road.py / QCSYSTEM.md, checked block by block. */
 class RoadKitTest {
 
-    private static RoadStyle style() {
-        RoadStyle style = new RoadStyle();
-        for (int i = 0; i < RoadStyle.LANES; i++) {
-            style.floor[i] = "lane" + (i + 1);
+    private static BlockChoice style() {
+        BlockChoice style = new BlockChoice(Roles.ROAD);
+        for (int lane = 1; lane <= 4; lane++) {
+            style.set("floor" + lane, "lane" + lane);
         }
-        style.joint[0] = "light";
-        style.medallion = "medallion";
-        style.centre = "centre";
+        style.set("joint1", "light");
+        style.set("medallion", "medallion");
+        style.set("centre", "centre");
         return style;
     }
 
-    private static Map<UnitPos, RoadStyle> cells(int... xz) {
-        Map<UnitPos, RoadStyle> cells = new LinkedHashMap<>();
-        RoadStyle style = style();
+    private static Map<UnitPos, BlockChoice> cells(int... xz) {
+        Map<UnitPos, BlockChoice> cells = new LinkedHashMap<>();
+        BlockChoice style = style();
         for (int i = 0; i < xz.length; i += 2) {
             cells.put(new UnitPos(xz[i], xz[i + 1]), style);
         }
@@ -38,8 +40,8 @@ class RoadKitTest {
 
     @Test
     void aStraightStreetIsSevenWideWithLanesOneToFourAndBack() {
-        Map<UnitPos, RoadStyle> street = cells(0, 0, 0, 1, 0, 2);
-        Map<net.minecraft.core.BlockPos, String> blocks = RoadKit.build(street, Set.of());
+        Map<UnitPos, BlockChoice> street = cells(0, 0, 0, 1, 0, 2);
+        Map<net.minecraft.core.BlockPos, String> blocks = RoadKit.build(street, Set.of(), Set.of());
         Map<Long, UnitPos> area = RoadKit.networkArea(street.keySet());
         UnitPos middle = new UnitPos(0, 1);
         for (int t = 0; t <= 8; t++) {
@@ -70,8 +72,8 @@ class RoadKitTest {
 
     @Test
     void cornerPostsAndClosedPlanesStayTheBuildings() {
-        Map<UnitPos, RoadStyle> street = cells(0, 0);
-        Map<net.minecraft.core.BlockPos, String> blocks = RoadKit.build(street, Set.of());
+        Map<UnitPos, BlockChoice> street = cells(0, 0);
+        Map<net.minecraft.core.BlockPos, String> blocks = RoadKit.build(street, Set.of(), Set.of());
         assertEquals(49, blocks.size());
         for (net.minecraft.core.BlockPos pos : blocks.keySet()) {
             assertTrue(pos.getX() >= 1 && pos.getX() <= 7 && pos.getZ() >= 1 && pos.getZ() <= 7);
@@ -80,24 +82,24 @@ class RoadKitTest {
 
     @Test
     void aCrossingHasTheMedallionAndAPlazaPavesItsPost() {
-        Map<UnitPos, RoadStyle> cross = cells(1, 1, 0, 1, 2, 1, 1, 0, 1, 2);
-        Map<net.minecraft.core.BlockPos, String> blocks = RoadKit.build(cross, Set.of());
+        Map<UnitPos, BlockChoice> cross = cells(1, 1, 0, 1, 2, 1, 1, 0, 1, 2);
+        Map<net.minecraft.core.BlockPos, String> blocks = RoadKit.build(cross, Set.of(), Set.of());
         assertEquals("cross", RoadKit.piece(RoadKit.arms(new UnitPos(1, 1), cross.keySet())));
         assertEquals("centre", blocks.get(new net.minecraft.core.BlockPos(12, 0, 12)));
         assertEquals("medallion", blocks.get(new net.minecraft.core.BlockPos(11, 0, 11)));
         assertNull(blocks.get(new net.minecraft.core.BlockPos(8, 0, 8)), "a corner post of a crossing is a building's");
 
-        Map<UnitPos, RoadStyle> plaza = cells(0, 0, 1, 0, 0, 1, 1, 1);
+        Map<UnitPos, BlockChoice> plaza = cells(0, 0, 1, 0, 0, 1, 1, 1);
         assertTrue(RoadKit.networkArea(plaza.keySet()).containsKey(RoadKit.key(8, 8)));
     }
 
     @Test
     void theRoadGivesWayToBuildingColumns() {
-        Map<UnitPos, RoadStyle> street = cells(0, 0);
+        Map<UnitPos, BlockChoice> street = cells(0, 0);
         Set<Long> columns = new HashSet<>();
         columns.add(RoadKit.key(1, 1));
         columns.add(RoadKit.key(4, 4));
-        Map<net.minecraft.core.BlockPos, String> blocks = RoadKit.build(street, columns);
+        Map<net.minecraft.core.BlockPos, String> blocks = RoadKit.build(street, Set.of(), columns);
         assertEquals(47, blocks.size());
         assertNull(blocks.get(new net.minecraft.core.BlockPos(1, 0, 1)));
     }

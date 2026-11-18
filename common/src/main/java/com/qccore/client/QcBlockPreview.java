@@ -42,6 +42,37 @@ public final class QcBlockPreview {
 		return problem;
 	}
 
+	private static int rolesVersion = -1;
+	private static com.qccore.core.qc.District.Result roles;
+
+	/** Per style, the required roles the plan's buildings and roads reach without a block. */
+	public static Map<String, java.util.Set<String>> missing() {
+		ensureRoles();
+		return roles == null ? Map.of() : roles.missing();
+	}
+
+	/** Per style, every role the plan's buildings and roads reach. */
+	public static Map<String, java.util.Set<String>> reached() {
+		ensureRoles();
+		return roles == null ? Map.of() : roles.reached();
+	}
+
+	private static void ensureRoles() {
+		if (rolesVersion == QcClientState.planVersion) {
+			return;
+		}
+		rolesVersion = QcClientState.planVersion;
+		if (QcClientState.plan.cells().size() > CELL_LIMIT) {
+			roles = null;
+			return;
+		}
+		try {
+			roles = com.qccore.core.qc.District.build(QcClientState.plan);
+		} catch (RuntimeException e) {
+			roles = null;
+		}
+	}
+
 	/** How many blocks the plan places, as last compiled. */
 	public static int size() {
 		return blocks.size();

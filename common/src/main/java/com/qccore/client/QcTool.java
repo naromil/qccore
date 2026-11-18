@@ -5,12 +5,12 @@ package com.qccore.client;
  * Every tool edits the plan only; nothing reaches the world before the plan is applied.
  */
 public enum QcTool {
-	/** Adds QC units that build the selected components. */
-	UNITS("units", 0.35F, 0.65F, 0.95F),
+	/** Adds QC units to the active building (a new one when none is active). */
+	UNITS("building", 0.35F, 0.65F, 0.95F),
 	/** Removes planned units, roads and cleared cells. */
 	ERASE("erase", 0.95F, 0.35F, 0.35F),
-	/** Sets the selected components on units that are already planned. */
-	PAINT("paint components", 0.75F, 0.45F, 0.95F),
+	/** Moves planned units into the active building. */
+	ASSIGN("assign to building", 0.75F, 0.45F, 0.95F),
 	/** Inner walls on every shared side inside the shape. */
 	WALLS("partition: walls", 0.29F, 0.66F, 1.0F),
 	/** Inner walls with a gate on every shared side inside the shape (rooms). */
@@ -19,7 +19,7 @@ public enum QcTool {
 	OPEN("partition: open", 0.9F, 0.9F, 0.9F),
 	/** Clears the terrain of the cells (and levels the floor plane if a ground block is set). */
 	CLEAR("clear terrain", 1.0F, 0.55F, 0.15F),
-	/** Lays a QC road (qckit's 7-wide negative space) in the road style of the kit screen. */
+	/** Lays a QC road (qckit's 7-wide negative space) in the active road style. */
 	ROAD("road", 0.65F, 0.65F, 0.65F),
 	/** Stamps the selected template at the clicked cell; the array and mirror modifiers repeat it. */
 	TEMPLATE("template", 0.95F, 0.85F, 0.3F);

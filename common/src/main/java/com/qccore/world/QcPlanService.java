@@ -8,6 +8,7 @@ import com.qccore.core.plan.Cell;
 import com.qccore.core.plan.ComponentMask;
 import com.qccore.core.plan.PlanCompiler;
 import com.qccore.core.plan.QcPlan;
+import com.qccore.core.qc.District;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,13 +25,13 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Applies a whole plan (units, component masks, terrain clearing, roads, ground levelling) in one
- * validated step, and records it for {@link QcUndoService}. Nothing is written before every check has
- * passed; every failure message is user-visible.
+ * Applies a whole plan (qckit buildings and roads, legacy QCSimple units, terrain clearing, ground
+ * levelling) in one validated step, and records it for {@link QcUndoService}. Nothing is written
+ * before every check has passed; every failure message is user-visible.
  *
- * <p>Write order: the cleared terrain, then the footprint of every unit that builds all nine
- * components (a unit planned with only some components is added to what stands there, so a building
- * can be put up component by component), then the blocks, then the ground fill.
+ * <p>Write order: the cleared terrain, then the footprint of every qckit unit and of every legacy
+ * unit that builds all nine components (a legacy unit planned with only some components is added to
+ * what stands there), then the blocks, then the ground fill.
  */
 public final class QcPlanService {
 
@@ -88,6 +89,10 @@ public final class QcPlanService {
 
         String message = "applied plan: " + plan.summary() + " at " + anchor.toShortString() + ", "
                 + undo.size() + " block(s) changed (/qc undo reverts it)";
+        if (!compiled.notes().isEmpty()) {
+            message += "; note: " + compiled.notes().get(0)
+                    + (compiled.notes().size() > 1 ? " (+" + (compiled.notes().size() - 1) + " more)" : "");
+        }
         LOGGER.info("qccore: {} applied a plan ({}) at {} in {}, {} blocks changed", player.getName().getString(),
                 plan.summary(), anchor, dimension, undo.size());
         return new QcResult(true, message);
@@ -113,10 +118,14 @@ public final class QcPlanService {
                 return new QcResult(false, "layer " + cell.layer() + " is not allowed (layers start at 1)");
             }
         }
+        if (!PlanCompiler.hasLegacyUnits(plan)) {
+            return null;
+        }
         boolean framework = false;
         for (int layer : plan.units().layerKeys()) {
             for (UnitPos pos : plan.units().peekLayer(layer).keySet()) {
-                framework |= ComponentMask.has(plan.mask(Cell.of(pos, layer)), ComponentMask.FRAMEWORK);
+                Cell cell = Cell.of(pos, layer);
+                framework |= !District.generates(plan, cell) && ComponentMask.has(plan.mask(cell), ComponentMask.FRAMEWORK);
             }
         }
         if (framework && !palette.isConfigured()) {
@@ -141,13 +150,13 @@ public final class QcPlanService {
         return null;
     }
 
-    /** Origins of the units that build every component: only those get their footprint cleared. */
+    /** Origins of the qckit units and the full legacy units: only those get their footprint cleared. */
     private static List<BlockPos> fullOrigins(QcPlan plan, BlockPos anchor) {
         List<BlockPos> origins = new ArrayList<>();
         for (int layer : plan.units().layerKeys()) {
             for (UnitPos pos : plan.units().peekLayer(layer).keySet()) {
                 Cell cell = Cell.of(pos, layer);
-                if (plan.mask(cell) == ComponentMask.ALL) {
+                if (District.generates(plan, cell) || plan.mask(cell) == ComponentMask.ALL) {
                     origins.add(PlanCompiler.origin(anchor, cell));
                 }
             }

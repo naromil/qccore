@@ -3,7 +3,6 @@ package com.qccore.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.qccore.client.QcInteraction.Cursor;
 import com.qccore.core.plan.BuildShape;
-import com.qccore.core.plan.ComponentMask;
 import com.qccore.core.plan.Modifiers;
 import java.util.ArrayList;
 import java.util.List;
@@ -91,11 +90,15 @@ public final class QcHud {
 		QcTool tool = QcClientState.tool;
 		List<Row> rows = new ArrayList<>();
 		rows.add(new Row("shape", shapeText(), QcUi.TEXT));
-		if (tool == QcTool.UNITS || tool == QcTool.PAINT) {
-			rows.add(new Row("parts", partsText(), QcUi.TEXT));
+		if (tool == QcTool.UNITS || tool == QcTool.ASSIGN) {
+			rows.add(new Row("building", buildingText(), QcUi.TEXT));
 		}
 		if (tool == QcTool.ROAD) {
 			rows.add(new Row("style", QcClientState.roadStyle, QcUi.TEXT));
+		}
+		String unset = unsetText();
+		if (unset != null) {
+			rows.add(new Row("unset", unset, QcUi.WARN));
 		}
 		String modifiers = modifiersText();
 		if (modifiers != null) {
@@ -190,16 +193,22 @@ public final class QcHud {
 		return line.toString();
 	}
 
-	/** The component mask, said the short way round: "all nine", "all but gate", or the parts that are on. */
-	private static String partsText() {
-		int mask = QcClientState.componentMask;
-		if (mask == ComponentMask.ALL) {
-			return "all nine";
+	/** The active building (or the design a new one starts from) and its style. */
+	private static String buildingText() {
+		com.qccore.core.plan.BuildingSpec active = QcClientState.activeBuilding();
+		if (active == null) {
+			return "new · " + QcClientState.design.template + " · " + QcClientState.design.style;
 		}
-		if (Integer.bitCount(mask) >= 6) {
-			return "all but " + ComponentMask.describe(ComponentMask.ALL & ~mask).replace("+", ", ");
+		return QcClientState.building + " · " + active.template + " · " + active.style;
+	}
+
+	/** How many roles the plan's styles still need, or {@code null} when every reached role has a block. */
+	private static String unsetText() {
+		int count = 0;
+		for (java.util.Set<String> roles : QcBlockPreview.missing().values()) {
+			count += roles.size();
 		}
-		return ComponentMask.describe(mask);
+		return count == 0 ? null : count + " role(s) without a block · B → Blocks";
 	}
 
 	private static String modifiersText() {

@@ -1,25 +1,25 @@
 package com.qccore.client;
 
 import com.qccore.core.plan.BuildShape;
+import com.qccore.core.plan.BuildingSpec;
 import com.qccore.core.plan.Cell;
-import com.qccore.core.plan.ComponentMask;
 import com.qccore.core.plan.Modifiers;
 import com.qccore.core.plan.QcPlan;
-import com.qccore.core.plan.RoadStyle;
+import com.qccore.core.qc.BlockChoice;
 import com.qccore.core.palette.BlockPalette;
 import com.qccore.core.palette.Defaults;
 import com.qccore.world.QcUnitRecord;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * The client-side editor session: the layout being edited, the palette the player configured, the
- * lattice setting and the units the server reported around the player.
+ * The client-side editor session: the plan being edited (its buildings, roads and the blocks chosen
+ * for its styles), the active building and road style, the lattice setting, the legacy QCSimple
+ * palette and the units the server reported around the player.
  *
  * <p>Single instance of mutable static state, the client-side counterpart of QCSimple's
  * {@code EditorState} singleton.
@@ -37,7 +37,7 @@ public final class QcClientState {
 	public static Integer alignB;
 	public static Integer alignC;
 
-	/** The plan being edited: units (layer -> unit cell), masks, cleared cells and roads. */
+	/** The plan being edited: units and their buildings, styles, roads, cleared cells. */
 	public static QcPlan plan = new QcPlan();
 	/** Bumped on every plan or palette change; the block preview recompiles when it moves. */
 	public static int planVersion;
@@ -49,21 +49,26 @@ public final class QcClientState {
 	public static BuildShape shape = BuildShape.SINGLE;
 	/** The points of the shape in progress (empty when no shape is started). */
 	public static final List<Cell> points = new ArrayList<>();
-	/** The components newly placed units build, see {@link ComponentMask}. */
-	public static int componentMask = ComponentMask.ALL;
 	/** Mirror and array modifiers applied to every shape. */
 	public static final Modifiers modifiers = new Modifiers();
-	/** The road style the road tool lays (a key of {@link #roadStyles}). */
+	/**
+	 * The building the units tool adds to (a key of the plan's buildings); {@code null} or a key the
+	 * plan no longer has means the next unit starts a new building with {@link #design}.
+	 */
+	public static String building;
+	/** The design a new building starts from: template, style name and overrides. */
+	public static BuildingSpec design = new BuildingSpec("house", "house");
+	/** The road style the road tool lays (a key of the plan's styles). */
 	public static String roadStyle = "street";
-	/** Road styles edited in the kit screen; copied into the plan when a road is laid. */
-	public static final Map<String, RoadStyle> roadStyles = new LinkedHashMap<>();
+	/** The style the block chooser shows first. */
+	public static String chooserStyle;
 	/** The template the template tool stamps (normalised), its name, and its rotation in quarter turns. */
 	public static QcPlan template;
 	public static String templateName = "";
 	public static int templateRotation;
 	/** Whether the compiled blocks of the plan are drawn as ghost blocks. */
 	public static boolean blockPreview = true;
-	/** The nine components the layout is built from, shared by the editor and the screens. */
+	/** Legacy: QCSimple's nine components, used only by {@code qcsimple} buildings and old layouts. */
 	public static final BlockPalette palette = defaultPalette();
 	/** The placed units the server reported, keyed by their origin corner. */
 	public static final Map<BlockPos, QcUnitRecord> nearbyUnits = new HashMap<>();
@@ -84,7 +89,7 @@ public final class QcClientState {
 		messageTicks = 60;
 	}
 
-	/** Drops the whole session, as on a world or dimension change. The configured palette survives. */
+	/** Drops the whole session, as on a world or dimension change. The chosen styles and the palette survive. */
 	public static void reset() {
 		active = false;
 		overlayVisible = true;
@@ -92,7 +97,10 @@ public final class QcClientState {
 		alignA = null;
 		alignB = null;
 		alignC = null;
-		plan = new QcPlan();
+		QcPlan fresh = new QcPlan();
+		fresh.styles().putAll(plan.styles());
+		plan = fresh;
+		building = null;
 		history.clear();
 		points.clear();
 		planVersion++;
@@ -110,6 +118,23 @@ public final class QcClientState {
 	/** Marks the plan (or the palette) as changed. */
 	public static void changed() {
 		planVersion++;
+	}
+
+	/** The active building's spec, or {@code null} when the next unit starts a new building. */
+	public static BuildingSpec activeBuilding() {
+		return building == null ? null : plan.buildings().get(building);
+	}
+
+	/** The spec the design screen edits: the active building's, else the one new buildings start from. */
+	public static BuildingSpec editedDesign() {
+		BuildingSpec active = activeBuilding();
+		return active != null ? active : design;
+	}
+
+	/** The block the active design's style chose for a role (its fallbacks included), or {@code null}. */
+	public static String activeStyleBlock(String role) {
+		BlockChoice style = plan.styles().get(editedDesign().style);
+		return style == null ? null : style.resolve(role);
 	}
 
 	private static BlockPalette defaultPalette() {

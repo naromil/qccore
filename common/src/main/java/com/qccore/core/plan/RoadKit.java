@@ -2,6 +2,8 @@ package com.qccore.core.plan;
 
 import com.qccore.core.UnitPos;
 import com.qccore.core.UnitSide;
+import com.qccore.core.qc.BlockChoice;
+import com.qccore.core.qc.BlockStr;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -24,7 +26,7 @@ import net.minecraft.core.BlockPos;
  *
  * <p>Coordinates are layer-local: cell {@code (cx, cz)} spans {@code x 8cx..8cx+8}, {@code z
  * 8cz..8cz+8}, and y 0 is the floor plane of the layer. The result maps those positions to the
- * block id strings of the {@link RoadStyle}; no registry is touched here.
+ * block id strings of the road style ({@link BlockChoice} of kind road); no registry is touched here.
  */
 public final class RoadKit {
 
@@ -139,12 +141,13 @@ public final class RoadKit {
     /**
      * Lays the road network.
      *
-     * @param cells   road cell -> its style (cells of one layer)
-     * @param columns layer-local (x, z) columns a building already stands on; the road writes nothing
-     *                there (paving, joint lights and furniture all give way)
+     * @param cells    road cell -> its style (cells of one layer; a {@link BlockChoice} of kind road)
+     * @param openings layer-local (x, z) columns kept free of furniture (door approaches)
+     * @param columns  layer-local (x, z) columns a building already stands on; the road writes nothing
+     *                 there (paving, joint lights and furniture all give way)
      * @return layer-local position -> block id, floor first, then furniture, then medallions
      */
-    public static Map<BlockPos, String> build(Map<UnitPos, RoadStyle> cells, Set<Long> columns) {
+    public static Map<BlockPos, String> build(Map<UnitPos, BlockChoice> cells, Set<Long> openings, Set<Long> columns) {
         Map<Long, UnitPos> area = networkArea(cells.keySet());
         Map<Long, Integer> lane = lanes(area.keySet());
         Map<BlockPos, String> blocks = new LinkedHashMap<>();
@@ -155,30 +158,33 @@ public final class RoadKit {
             }
             int x = x(column);
             int z = z(column);
-            RoadStyle style = cells.get(entry.getValue());
-            int ln = lane.get(column) - 1;
+            BlockChoice style = cells.get(entry.getValue());
+            int ln = lane.get(column);
             boolean joint = isJoint(x, z);
-            String surface = joint && !RoadStyle.blank(style.joint[ln]) ? style.joint[ln] : style.floor[ln];
-            if (!RoadStyle.blank(surface)) {
-                blocks.put(new BlockPos(x, 0, z), surface);
+            String surface = joint && style.get("joint" + ln) != null ? style.get("joint" + ln) : style.get("floor" + ln);
+            if (surface != null) {
+                blocks.put(new BlockPos(x, 0, z), BlockStr.oriented(surface, "y"));
             }
-            List<String> post = joint ? style.post[ln] : List.of();
+            if (openings.contains(column)) {
+                continue;
+            }
+            List<String> post = joint ? posts(style.get("post" + ln)) : List.of();
             if (!post.isEmpty()) {
                 for (int i = 0; i < post.size(); i++) {
-                    if (!RoadStyle.blank(post.get(i))) {
-                        blocks.put(new BlockPos(x, i + 1, z), post.get(i));
-                    }
+                    blocks.put(new BlockPos(x, i + 1, z), BlockStr.oriented(post.get(i), "y"));
                 }
                 continue;
             }
-            if (!RoadStyle.blank(style.over[ln]) && !(joint && !style.post[ln].isEmpty())) {
-                blocks.put(new BlockPos(x, 1, z), style.over[ln]);
+            String over = style.get("over" + ln);
+            if (over != null && !(joint && style.get("post" + ln) != null)) {
+                blocks.put(new BlockPos(x, 1, z), BlockStr.leaves(over));
             }
         }
-        for (Map.Entry<UnitPos, RoadStyle> entry : cells.entrySet()) {
+        for (Map.Entry<UnitPos, BlockChoice> entry : cells.entrySet()) {
             UnitPos cell = entry.getKey();
-            RoadStyle style = entry.getValue();
-            if (!isNode(arms(cell, cells.keySet())) || RoadStyle.blank(style.medallion)) {
+            BlockChoice style = entry.getValue();
+            String medallion = style.get("medallion");
+            if (!isNode(arms(cell, cells.keySet())) || medallion == null) {
                 continue;
             }
             int ox = cell.x() * PITCH;
@@ -186,15 +192,29 @@ public final class RoadKit {
             for (int x = 3; x <= 5; x++) {
                 for (int z = 3; z <= 5; z++) {
                     if (!columns.contains(key(ox + x, oz + z))) {
-                        blocks.put(new BlockPos(ox + x, 0, oz + z), style.medallion);
+                        blocks.put(new BlockPos(ox + x, 0, oz + z), BlockStr.oriented(medallion, "y"));
                     }
                 }
             }
-            if (!RoadStyle.blank(style.centre) && !columns.contains(key(ox + 4, oz + 4))) {
-                blocks.put(new BlockPos(ox + 4, 0, oz + 4), style.centre);
+            String centre = style.get("centre");
+            if (centre != null && !columns.contains(key(ox + 4, oz + 4))) {
+                blocks.put(new BlockPos(ox + 4, 0, oz + 4), BlockStr.oriented(centre, "y"));
             }
         }
         return blocks;
+    }
+
+    /** A post role: ids bottom-up, comma separated. */
+    public static List<String> posts(String raw) {
+        List<String> out = new ArrayList<>();
+        if (raw != null) {
+            for (String id : raw.split(",")) {
+                if (!id.isBlank()) {
+                    out.add(id.trim());
+                }
+            }
+        }
+        return out;
     }
 
     public static long key(int x, int z) {

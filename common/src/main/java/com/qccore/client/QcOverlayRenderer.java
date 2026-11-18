@@ -8,7 +8,7 @@ import com.qccore.core.UnitLayers;
 import com.qccore.core.UnitPos;
 import com.qccore.core.UnitSide;
 import com.qccore.core.plan.Cell;
-import com.qccore.core.plan.ComponentMask;
+import com.qccore.core.qc.District;
 import com.qccore.core.plan.Modifiers;
 import com.qccore.world.QcUnitRecord;
 import net.minecraft.client.Camera;
@@ -120,7 +120,7 @@ public final class QcOverlayRenderer {
 					return;
 				}
 				boolean current = cursor != null && cursor.layer() == layer;
-				boolean partial = QcClientState.plan.mask(Cell.of(cell, layer)) != ComponentMask.ALL;
+				boolean partial = !District.generates(QcClientState.plan, Cell.of(cell, layer));
 				drawBox(matrices, vertices, origin, 8.0,
 						current ? CURSOR_LAYER_RED : partial ? PARTIAL_RED : LAYER_RED,
 						current ? CURSOR_LAYER_GREEN : partial ? PARTIAL_GREEN : LAYER_GREEN,

@@ -1,5 +1,7 @@
 package com.qccore.core.plan;
 
+import com.qccore.core.qc.BlockChoice;
+import com.qccore.core.qc.Roles;
 import com.qccore.core.QcUnit;
 import com.qccore.core.UnitSide;
 import com.qccore.core.nbt.PlanCodec;
@@ -45,7 +47,12 @@ class QcPlanTest {
         assertTrue(unit(plan, new Cell(2, 1, 0)).hasWallW());
         assertEquals(0, plan.partition(row(3), QcPlan.Partition.WALL));
         plan.partition(row(3), QcPlan.Partition.OPEN);
+        QcUnit open = unit(plan, new Cell(1, 1, 0));
+        assertTrue(!open.hasWallE() && open.isGateE(), "open is stored as the gate flag alone");
+        assertEquals("open", QcPlan.partyOverride(open, UnitSide.EAST));
+        plan.partition(row(3), QcPlan.Partition.DESIGN);
         assertFalse(unit(plan, new Cell(1, 1, 0)).hasAnyE());
+        assertNull(QcPlan.partyOverride(unit(plan, new Cell(1, 1, 0)), UnitSide.EAST));
     }
 
     @Test
@@ -104,13 +111,13 @@ class QcPlanTest {
         QcPlan other = new QcPlan();
         other.addUnit(new Cell(0, 1, 0), ComponentMask.ALL);
         other.clears().add(new Cell(4, 1, 4));
-        RoadStyle style = new RoadStyle();
-        style.floor[0] = "a";
-        other.roadStyles().put("s", style);
+        BlockChoice style = new BlockChoice(Roles.ROAD);
+        style.set("floor1", "a");
+        other.styles().put("s", style);
         plan.merge(other);
         assertEquals(ComponentMask.ALL, plan.mask(new Cell(0, 1, 0)));
         assertTrue(plan.clears().contains(new Cell(4, 1, 4)));
-        assertEquals("a", plan.roadStyles().get("s").floor[0]);
+        assertEquals("a", plan.styles().get("s").get("floor1"));
 
         QcPlan road = new QcPlan();
         road.roads().put(new Cell(0, 1, 0), "s");
@@ -131,18 +138,23 @@ class QcPlanTest {
         plan.clearMargin = 3;
         plan.ground = "minecraft:dirt";
         plan.roads().put(new Cell(5, 1, 5), "street");
-        RoadStyle style = new RoadStyle();
-        style.floor[0] = "minecraft:stone";
-        style.post[0].addAll(List.of("minecraft:stone_brick_wall", "minecraft:lantern"));
-        style.medallion = "minecraft:chiseled_stone_bricks";
-        plan.roadStyles().put("street", style);
+        BlockChoice style = new BlockChoice(Roles.ROAD);
+        style.set("floor1", "minecraft:stone");
+        style.set("post1", "minecraft:stone_brick_wall,minecraft:lantern");
+        style.set("medallion", "minecraft:chiseled_stone_bricks");
+        plan.styles().put("street", style);
+        plan.addUnit(new Cell(7, 1, 7), "A");
+        plan.buildings().put("A", new BuildingSpec("house", "brick"));
+        plan.buildings().get("A").options.put("roof", "gable");
 
         QcPlan back = PlanCodec.fromNbt(PlanCodec.toNbt(plan));
         assertEquals(PlanCodec.toNbt(plan), PlanCodec.toNbt(back));
         assertEquals(ComponentMask.FRAMEWORK | ComponentMask.FLOOR, back.mask(new Cell(0, 1, 0)));
         assertTrue(unit(back, new Cell(1, 1, 0)).isGateW());
         assertEquals(3, back.clearMargin);
-        assertEquals(List.of("minecraft:stone_brick_wall", "minecraft:lantern"), back.roadStyles().get("street").post[0]);
+        assertEquals(List.of("minecraft:stone_brick_wall", "minecraft:lantern"), RoadKit.posts(back.styles().get("street").get("post1")));
+        assertEquals("A", back.building(new Cell(7, 1, 7)));
+        assertEquals("gable", back.buildings().get("A").options.get("roof"));
         assertNull(back.masks().get(new Cell(1, 1, 0)));
         assertEquals(UnitSide.WEST, Flags.opposite(UnitSide.EAST));
     }

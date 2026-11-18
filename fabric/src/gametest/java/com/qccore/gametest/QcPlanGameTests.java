@@ -7,7 +7,9 @@ import com.qccore.core.plan.Cell;
 import com.qccore.core.plan.ComponentMask;
 import com.qccore.core.plan.PlanCompiler;
 import com.qccore.core.plan.QcPlan;
-import com.qccore.core.plan.RoadStyle;
+import com.qccore.core.plan.BuildingSpec;
+import com.qccore.core.qc.BlockChoice;
+import com.qccore.core.qc.Roles;
 import com.qccore.world.QcPlanService;
 import com.qccore.world.QcUndoService;
 import com.qccore.world.QcUnitIndex;
@@ -49,13 +51,13 @@ public class QcPlanGameTests implements FabricGameTest {
         plan.addUnit(new Cell(1, 1, 0), ComponentMask.FRAMEWORK);
         plan.clears().add(new Cell(3, 1, 0));
         plan.clearMargin = 1;
-        RoadStyle style = new RoadStyle();
-        style.floor[0] = "minecraft:smooth_stone";
-        style.floor[1] = "minecraft:stone_bricks";
-        style.floor[2] = "minecraft:stone_bricks";
-        style.floor[3] = "minecraft:polished_andesite";
-        style.joint[0] = "minecraft:sea_lantern";
-        plan.roadStyles().put("street", style);
+        BlockChoice style = new BlockChoice(Roles.ROAD);
+        style.set("floor1", "minecraft:smooth_stone");
+        style.set("floor2", "minecraft:stone_bricks");
+        style.set("floor3", "minecraft:stone_bricks");
+        style.set("floor4", "minecraft:polished_andesite");
+        style.set("joint1", "minecraft:sea_lantern");
+        plan.styles().put("street", style);
         plan.roads().put(new Cell(5, 1, 0), "street");
         plan.roads().put(new Cell(5, 1, 1), "street");
 
@@ -180,7 +182,7 @@ public class QcPlanGameTests implements FabricGameTest {
         QcPlan road = new QcPlan();
         road.roads().put(new Cell(0, 1, 0), "nowhere");
         assertRefused(QcPlanService.apply(player, anchor, road, palette),
-                "road style 'nowhere' is missing or has an empty floor lane");
+                "road style 'nowhere' does not exist");
 
         QcPlan noFrame = new QcPlan();
         noFrame.addUnit(new Cell(0, 1, 0), ComponentMask.FLOOR);
@@ -199,6 +201,89 @@ public class QcPlanGameTests implements FabricGameTest {
             if (!ctx.getLevel().getBlockState(pos).isAir()) {
                 throw new AssertionError("a refused plan wrote " + pos.toShortString());
             }
+        }
+        ctx.succeed();
+    }
+
+    /** A qckit house with real blocks: oriented logs, stairs, a door, the roof; then a style left empty is refused. */
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void qckitHouseAppliesWithRealBlocks(GameTestHelper ctx) {
+        ServerLevel world = ctx.getLevel();
+        BlockPos anchor = ctx.absolutePos(BlockPos.ZERO).offset(0, 40, 200);
+        QcPlan plan = new QcPlan();
+        plan.buildings().put("A", new BuildingSpec("house", "brick"));
+        BlockChoice brick = new BlockChoice(Roles.BUILDING);
+        brick.set("frame", "spruce_log");
+        brick.set("floor", "spruce_planks");
+        brick.set("wall", "bricks");
+        brick.set("glass", "glass");
+        brick.set("row", "stone_brick_stairs");
+        brick.set("coping", "stone_brick_stairs");
+        brick.set("roof", "dark_oak_stairs");
+        brick.set("roof_slab", "dark_oak_slab");
+        brick.set("roof_full", "dark_oak_planks");
+        brick.set("sill", "stone_brick_slab");
+        brick.set("light", "lantern");
+        brick.set("door", "spruce_door");
+        plan.styles().put("brick", brick);
+        BlockChoice street = new BlockChoice(Roles.ROAD);
+        for (int lane = 1; lane <= 4; lane++) {
+            street.set("floor" + lane, "stone_bricks");
+        }
+        plan.styles().put("street", street);
+        plan.addUnit(new Cell(0, 1, 0), "A");
+        plan.addUnit(new Cell(1, 1, 0), "A");
+        plan.addUnit(new Cell(0, 2, 0), "A");
+        plan.addUnit(new Cell(1, 2, 0), "A");
+        plan.roads().put(new Cell(0, 1, 1), "street");
+        plan.roads().put(new Cell(1, 1, 1), "street");
+        BlockPalette palette = new BlockPalette();
+        Defaults.applyTo(palette);
+        ServerPlayer player = ctx.makeMockServerPlayerInLevel();
+
+        PlanCompiler.Compiled compiled = PlanCompiler.compile(plan, palette, anchor);
+        if (!compiled.problems().isEmpty()) {
+            throw new AssertionError("the house did not compile: " + compiled.problems());
+        }
+        QcResult result = QcPlanService.apply(player, anchor, plan, palette);
+        if (!result.ok()) {
+            throw new AssertionError("apply was refused: " + result.message());
+        }
+        BlockPos origin = anchor.offset(0, 8, 0);
+        BlockState post = world.getBlockState(origin.offset(0, 4, 0));
+        if (!post.is(Blocks.SPRUCE_LOG) || post.getValue(net.minecraft.world.level.block.RotatedPillarBlock.AXIS)
+                != net.minecraft.core.Direction.Axis.Y) {
+            throw new AssertionError("the corner post is not an upright spruce log: " + post);
+        }
+        BlockState beam = world.getBlockState(origin.offset(4, 0, 0));
+        if (!beam.is(Blocks.SPRUCE_LOG) || beam.getValue(net.minecraft.world.level.block.RotatedPillarBlock.AXIS)
+                != net.minecraft.core.Direction.Axis.X) {
+            throw new AssertionError("the beam along x does not lie along x: " + beam);
+        }
+        expect(world, origin.offset(4, 0, 4), Blocks.SPRUCE_PLANKS, "floor");
+        boolean roof = false;
+        for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-2, 17, -2), origin.offset(18, 24, 10))) {
+            roof |= world.getBlockState(pos).is(Blocks.DARK_OAK_STAIRS);
+        }
+        if (!roof) {
+            throw new AssertionError("no hip roof above the top storey");
+        }
+        boolean door = false;
+        for (int x = 0; x <= 16; x++) {
+            door |= world.getBlockState(origin.offset(x, 1, 8)).is(Blocks.SPRUCE_DOOR);
+        }
+        if (!door) {
+            throw new AssertionError("no door on the road face");
+        }
+        expect(world, anchor.offset(4, 8, 12), Blocks.STONE_BRICKS, "road in front of the house");
+        if (!QcUndoService.undo(player).ok()) {
+            throw new AssertionError("could not undo the house");
+        }
+
+        plan.styles().put("brick", new BlockChoice(Roles.BUILDING));
+        QcResult refused = QcPlanService.apply(player, anchor, plan, palette);
+        if (refused.ok() || !refused.message().startsWith("style 'brick' has no block for frame, beam, floor, wall")) {
+            throw new AssertionError("an empty style was not refused as expected: " + refused.message());
         }
         ctx.succeed();
     }

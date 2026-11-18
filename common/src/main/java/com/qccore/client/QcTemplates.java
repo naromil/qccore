@@ -1,14 +1,11 @@
 package com.qccore.client;
 
 import com.qccore.QCCore;
-import com.qccore.core.nbt.PaletteCodec;
 import com.qccore.core.nbt.PlanCodec;
-import com.qccore.core.palette.BlockPalette;
 import com.qccore.core.plan.QcPlan;
 import com.qccore.platform.QcPlatform;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -19,10 +16,13 @@ import java.util.Locale;
 import java.util.stream.Stream;
 
 /**
- * QC unit templates: saved plans in {@code <gameDir>/qccore/templates/<name>.qct.nbt}, gzip NBT
- * {@code {"qcTemplate":1,"plan":PlanCodec,"palette":PaletteCodec}}. A template is stored in its
- * normal form (minimum cell {@code (0, 1, 0)}), so it can be stamped anywhere and in any rotation;
- * the palette it was designed with travels along and can be adopted on demand.
+ * QC templates: saved plans in {@code <gameDir>/qccore/templates/<name>.qct.nbt}, gzip NBT
+ * {@code {"qcTemplate":2,"plan":PlanCodec}}. A template is geometry only: its buildings keep their
+ * template, design overrides and style <em>names</em>, its roads their style names, but every
+ * style's blocks are stripped ({@link QcPlan#stripped()}). Stamping it adds empty styles the player
+ * fills in the block chooser; a style of the same name already chosen in the plan is used as it is.
+ * It is stored in its normal form (minimum cell {@code (0, 1, 0)}), so it can be stamped anywhere
+ * and in any rotation. Version-1 templates (with a QCSimple palette) still load; the palette is ignored.
  */
 public final class QcTemplates {
 	private static final String SUFFIX = ".qct.nbt";
@@ -53,12 +53,11 @@ public final class QcTemplates {
 		}
 	}
 
-	/** Saves the plan (normalised) with the palette and returns the file. */
-	public static Path save(String rawName, QcPlan plan, BlockPalette palette) {
+	/** Saves the plan, normalised and with its blocks stripped, and returns the file. */
+	public static Path save(String rawName, QcPlan plan) {
 		CompoundTag tag = new CompoundTag();
-		tag.putInt("qcTemplate", 1);
-		tag.put("plan", PlanCodec.toNbt(plan.normalized()));
-		tag.put("palette", PaletteCodec.toNbt(palette));
+		tag.putInt("qcTemplate", 2);
+		tag.put("plan", PlanCodec.toNbt(plan.stripped().normalized()));
 		Path file = dir().resolve(QcSchematics.normaliseName(rawName) + SUFFIX);
 		try {
 			Files.createDirectories(file.getParent());
@@ -69,16 +68,16 @@ public final class QcTemplates {
 		return file;
 	}
 
-	/** A loaded template: its normalised plan and the palette it was saved with. */
-	public record Template(String name, QcPlan plan, @Nullable CompoundTag palette) {
+	/** A loaded template: its normalised plan. */
+	public record Template(String name, QcPlan plan) {
 	}
 
 	public static Template load(String name) {
 		Path file = dir().resolve(name + SUFFIX);
 		try {
 			CompoundTag tag = NbtIo.readCompressed(file.toFile());
-			QcPlan plan = PlanCodec.fromNbt(tag.getCompound("plan")).normalized();
-			return new Template(name, plan, tag.contains("palette") ? tag.getCompound("palette") : null);
+			QcPlan plan = PlanCodec.fromNbt(tag.getCompound("plan")).stripped().normalized();
+			return new Template(name, plan);
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}
@@ -89,32 +88,6 @@ public final class QcTemplates {
 			Files.deleteIfExists(dir().resolve(name + SUFFIX));
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
-		}
-	}
-
-	/** Copies a saved palette into the session palette. */
-	public static void adoptPalette(CompoundTag paletteTag) {
-		BlockPalette loaded = PaletteCodec.fromNbt(paletteTag);
-		copyPalette(loaded, QcClientState.palette);
-	}
-
-	static void copyPalette(BlockPalette from, BlockPalette to) {
-		to.frameworkBlock().setId(from.frameworkBlock().getRawId());
-		to.rowBlock().setId(from.rowBlock().getRawId());
-		to.columnBlock().setId(from.columnBlock().getRawId());
-		to.wallBlock().setId(from.wallBlock().getRawId());
-		to.floorBlock().setId(from.floorBlock().getRawId());
-		copyStructure(from.innerWall(), to.innerWall());
-		copyStructure(from.gate(), to.gate());
-		copyStructure(from.outerWall(), to.outerWall());
-		copyStructure(from.innerColumn(), to.innerColumn());
-	}
-
-	private static void copyStructure(com.qccore.core.palette.QcComponent from, com.qccore.core.palette.QcComponent to) {
-		if (from.isEmpty()) {
-			to.setExtracted(null);
-		} else {
-			to.setStructure(from.getStructure(), from.getPath());
 		}
 	}
 }

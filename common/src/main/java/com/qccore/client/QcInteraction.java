@@ -9,8 +9,11 @@ import com.qccore.core.plan.BuildShape;
 import com.qccore.core.plan.Cell;
 import com.qccore.core.plan.Flags;
 import com.qccore.core.plan.Modifiers;
+import com.qccore.core.plan.BuildingSpec;
 import com.qccore.core.plan.QcPlan;
-import com.qccore.core.plan.RoadStyle;
+import com.qccore.core.qc.BlockChoice;
+import com.qccore.core.qc.Roles;
+import com.qccore.core.qc.Templates;
 import com.qccore.world.QcUnitRecord;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
@@ -280,11 +283,15 @@ public final class QcInteraction {
 		}
 		switch (tool) {
 			case UNITS -> {
+				if (valid.isEmpty()) {
+					return false;
+				}
+				String building = ensureBuilding();
 				boolean changed = false;
 				for (Cell cell : valid) {
 					if (!plan.hasUnit(cell)) {
 						plan.roads().remove(cell);
-						plan.addUnit(cell, QcClientState.componentMask);
+						plan.addUnit(cell, building);
 						changed = true;
 					}
 				}
@@ -293,14 +300,18 @@ public final class QcInteraction {
 			case ERASE -> {
 				return erase(cells);
 			}
-			case PAINT -> {
+			case ASSIGN -> {
 				boolean changed = false;
+				String building = null;
 				for (Cell cell : valid) {
-					if (plan.hasUnit(cell) && plan.mask(cell) != QcClientState.componentMask) {
-						plan.setMask(cell, QcClientState.componentMask);
-						changed = true;
+					if (plan.hasUnit(cell)) {
+						if (building == null) {
+							building = ensureBuilding();
+						}
+						changed |= !building.equals(plan.unitBuildings().put(cell, building));
 					}
 				}
+				plan.pruneBuildings();
 				return changed;
 			}
 			case WALLS, GATES, OPEN -> {
@@ -318,12 +329,12 @@ public final class QcInteraction {
 				return plan.clears().addAll(valid);
 			}
 			case ROAD -> {
-				RoadStyle style = QcClientState.roadStyles.get(QcClientState.roadStyle);
-				if (style == null || !style.isComplete()) {
-					QcClientState.say("QC: choose a road style with four floor lanes first (B -> Kits & roads)");
+				BlockChoice style = plan.styles().get(QcClientState.roadStyle);
+				if (style != null && !style.kind().equals(Roles.ROAD)) {
+					QcClientState.say("QC: '" + QcClientState.roadStyle + "' is a building style; pick a road style (B -> Blocks)");
 					return false;
 				}
-				plan.roadStyles().put(QcClientState.roadStyle, style.copy());
+				plan.styles().putIfAbsent(QcClientState.roadStyle, new BlockChoice(Roles.ROAD));
 				boolean changed = false;
 				for (Cell cell : valid) {
 					if (plan.hasUnit(cell)) {
@@ -352,7 +363,27 @@ public final class QcInteraction {
 			changed |= plan.roads().remove(cell) != null;
 			changed |= plan.clears().remove(cell);
 		}
+		plan.pruneBuildings();
 		return changed;
+	}
+
+	/**
+	 * The key of the building the units tool adds to: the active one, or a new building with the
+	 * current design (its style created empty when the plan has none of that name).
+	 */
+	static String ensureBuilding() {
+		QcPlan plan = QcClientState.plan;
+		if (QcClientState.activeBuilding() != null) {
+			return QcClientState.building;
+		}
+		String key = plan.nextBuildingKey();
+		BuildingSpec spec = QcClientState.design.copy();
+		plan.buildings().put(key, spec);
+		if (!Templates.LEGACY.equals(spec.template)) {
+			plan.styles().putIfAbsent(spec.style, new BlockChoice(Roles.BUILDING));
+		}
+		QcClientState.building = key;
+		return key;
 	}
 
 	/** Every placement of the template at {@code at}, with the modifiers applied. */
@@ -367,9 +398,14 @@ public final class QcInteraction {
 			return false;
 		}
 		for (QcPlan placed : templatePlacements(at)) {
-			QcClientState.plan.merge(placed);
+			QcClientState.plan.merge(placed.withFreshBuildings(QcClientState.plan));
 		}
-		QcClientState.say("QC: stamped template " + QcClientState.templateName);
+		int unset = 0;
+		for (BlockChoice style : QcClientState.plan.styles().values()) {
+			unset += style.isEmpty() ? 1 : 0;
+		}
+		QcClientState.say("QC: stamped template " + QcClientState.templateName
+				+ (unset == 0 ? "" : "; " + unset + " style(s) need blocks (B -> Blocks)"));
 		return true;
 	}
 
@@ -545,6 +581,7 @@ public final class QcInteraction {
 			QcPlan fresh = new QcPlan();
 			fresh.clearMargin = QcClientState.plan.clearMargin;
 			fresh.ground = QcClientState.plan.ground;
+			fresh.styles().putAll(QcClientState.plan.styles());
 			QcClientState.plan = fresh;
 			return true;
 		});
@@ -572,6 +609,9 @@ public final class QcInteraction {
 			if (units != null && units.containsKey(cell.pos())) {
 				slice.units().layer(layer).put(cell.pos(), new QcUnit(units.get(cell.pos())));
 				slice.setMask(cell, plan.mask(cell));
+				if (plan.building(cell) != null) {
+					slice.unitBuildings().put(cell, plan.building(cell));
+				}
 			}
 			if (plan.roads().containsKey(cell)) {
 				slice.roads().put(cell, plan.roads().get(cell));
