@@ -33,6 +33,34 @@ public final class BlockStr {
     private BlockStr() {
     }
 
+    /**
+     * A comma list of ids ({@code a,b,c}, as a post or a decor role holds) split into its ids, blank
+     * entries dropped. Commas inside a state ({@code barrel[facing=up,open=false]}) stay with their id.
+     */
+    public static java.util.List<String> ids(String raw) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (raw == null) {
+            return out;
+        }
+        int depth = 0;
+        int start = 0;
+        for (int i = 0; i <= raw.length(); i++) {
+            char c = i < raw.length() ? raw.charAt(i) : ',';
+            if (c == '[') {
+                depth++;
+            } else if (c == ']') {
+                depth = Math.max(0, depth - 1);
+            } else if (c == ',' && (depth == 0 || i == raw.length())) {
+                String id = raw.substring(start, i).trim();
+                if (!id.isEmpty()) {
+                    out.add(id);
+                }
+                start = i + 1;
+            }
+        }
+        return out;
+    }
+
     /** The id without its state, with the {@code minecraft:} namespace added when missing. */
     public static String base(String s) {
         int bracket = s.indexOf('[');

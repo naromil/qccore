@@ -206,15 +206,7 @@ public final class RoadKit {
 
     /** A post role: ids bottom-up, comma separated. */
     public static List<String> posts(String raw) {
-        List<String> out = new ArrayList<>();
-        if (raw != null) {
-            for (String id : raw.split(",")) {
-                if (!id.isBlank()) {
-                    out.add(id.trim());
-                }
-            }
-        }
-        return out;
+        return BlockStr.ids(raw);
     }
 
     public static long key(int x, int z) {

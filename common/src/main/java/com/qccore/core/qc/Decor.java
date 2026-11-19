@@ -173,8 +173,8 @@ public final class Decor {
     }
 
     private String pick(Random r, String role) {
-        String[] ids = blocks.get(role).split(",");
-        return ids[r.nextInt(ids.length)].trim();
+        List<String> ids = BlockStr.ids(blocks.get(role));
+        return ids.isEmpty() ? blocks.get(role) : ids.get(r.nextInt(ids.size()));
     }
 
     private static <T> T choice(Random r, List<T> list) {

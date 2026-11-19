@@ -4,6 +4,7 @@ import com.qccore.client.QcUi.Chip;
 import com.qccore.core.plan.BlockIds;
 import com.qccore.core.qc.BlockChoice;
 import com.qccore.core.qc.Role;
+import com.qccore.core.qc.BlockStr;
 import com.qccore.core.qc.Roles;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -392,7 +393,7 @@ public class QcBlockChooserScreen extends Screen {
 				g.drawString(this.font, this.font.plainSubstrByWidth(role, 80), this.right + 6, field.getY() + 3,
 						need ? QcUi.ERROR : this.work.get(role) != null ? QcUi.TEXT : QcUi.MUTED, false);
 				String text = field.getValue().trim();
-				field.setTextColor(text.isEmpty() || valid(role, text) ? QcUi.TEXT : QcUi.ERROR);
+				field.setTextColor(text.isEmpty() || valid(this.work.kind(), role, text) ? QcUi.TEXT : QcUi.ERROR);
 				String shown = text.isEmpty() ? this.work.resolve(role) : text;
 				ItemStack icon = shown == null ? ItemStack.EMPTY : QcUi.blockIcon(firstId(shown));
 				if (!icon.isEmpty()) {
@@ -407,17 +408,20 @@ public class QcBlockChooserScreen extends Screen {
 	}
 
 	private static String firstId(String text) {
-		int comma = text.indexOf(',');
-		int eq = text.indexOf('=');
-		String id = comma >= 0 ? text.substring(0, comma) : text;
+		List<String> ids = BlockStr.ids(text);
+		String id = ids.isEmpty() ? text : ids.get(0);
+		int eq = id.indexOf('=');
 		return eq >= 0 && (id.indexOf('[') < 0 || eq < id.indexOf('[')) ? id.substring(0, eq) : id;
 	}
 
-	/** Whether a typed value names blocks: a post is a comma list, a mix {@code id=share,...}. */
-	private static boolean valid(String role, String text) {
-		if (role.startsWith("post")) {
-			for (String id : text.split(",")) {
-				if (!id.isBlank() && BlockIds.parse(id.trim()) == null) {
+	/**
+	 * Whether a typed value names blocks: a post and every decor role is a comma list, a mix
+	 * {@code id=share,...}.
+	 */
+	private static boolean valid(String kind, String role, String text) {
+		if (role.startsWith("post") || Roles.DECOR.equals(kind)) {
+			for (String id : BlockStr.ids(text)) {
+				if (BlockIds.parse(id) == null) {
 					return false;
 				}
 			}
