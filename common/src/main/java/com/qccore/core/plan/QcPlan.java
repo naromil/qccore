@@ -278,7 +278,7 @@ public final class QcPlan {
     /**
      * A transformed copy: first {@code quarterTurns} clockwise turns about the cell origin (seen from
      * above, north -> east), then the mirrors ({@code mirrorX}: x -> -x, east <-> west;
-     * {@code mirrorZ}: z -> -z, north <-> south), then the offset. Wall and gate flags turn with
+     * {@code mirrorZ}: z -> -z, north <-> south), then the offset. Wall and gate flags (and a fixed {@code roof_axis}) turn with
      * their units, so a template keeps its partitions in any orientation.
      */
     public QcPlan transformed(int quarterTurns, boolean mirrorX, boolean mirrorZ, int dx, int dLayer, int dz) {
@@ -302,7 +302,18 @@ public final class QcPlan {
         for (Map.Entry<Cell, String> entry : unitBuildings.entrySet()) {
             out.unitBuildings.put(transform.apply(entry.getKey()), entry.getValue());
         }
-        buildings.forEach((k, v) -> out.buildings.put(k, v.copy()));
+        buildings.forEach((k, v) -> {
+            BuildingSpec spec = v.copy();
+            // a fixed ridge axis turns with the building; mirrors keep it
+            if (transform.turns() % 2 == 1) {
+                spec.options.computeIfPresent("roof_axis", (key, axis) -> switch (axis.trim()) {
+                    case "x" -> "z";
+                    case "z" -> "x";
+                    default -> axis;
+                });
+            }
+            out.buildings.put(k, spec);
+        });
         for (Cell cell : clears) {
             out.clears.add(transform.apply(cell));
         }

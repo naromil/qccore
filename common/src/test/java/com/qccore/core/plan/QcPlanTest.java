@@ -93,6 +93,25 @@ class QcPlanTest {
     }
 
     @Test
+    void aQuarterTurnTurnsAFixedRoofAxisWithTheBuilding() {
+        QcPlan plan = new QcPlan();
+        BuildingSpec spec = new BuildingSpec("terrace", "s");
+        spec.options.put("roof_axis", "x");
+        plan.buildings().put("a", spec);
+        BuildingSpec auto = new BuildingSpec("terrace", "s");
+        auto.options.put("roof_axis", "auto");
+        plan.buildings().put("b", auto);
+
+        assertEquals("z", plan.transformed(1, false, false, 0, 0, 0).buildings().get("a").options.get("roof_axis"));
+        assertEquals("x", plan.transformed(2, false, false, 0, 0, 0).buildings().get("a").options.get("roof_axis"));
+        assertEquals("z", plan.transformed(-1, false, false, 0, 0, 0).buildings().get("a").options.get("roof_axis"));
+        assertEquals("x", plan.transformed(0, true, true, 0, 0, 0).buildings().get("a").options.get("roof_axis"));
+        assertEquals("auto", plan.transformed(1, false, false, 0, 0, 0).buildings().get("b").options.get("roof_axis"));
+        // the source plan keeps its own axis
+        assertEquals("x", plan.buildings().get("a").options.get("roof_axis"));
+    }
+
+    @Test
     void normalizedPutsTheMinimumCellAtTheOriginOfLayerOne() {
         QcPlan plan = new QcPlan();
         plan.addUnit(new Cell(-3, 4, 7), ComponentMask.ALL);
