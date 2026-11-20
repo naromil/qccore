@@ -60,6 +60,12 @@ public final class QCCoreClient {
 		}
 		QcClientState.nearbyUnits.clear();
 		QcClientState.nearbyUnits.putAll(records);
+		if (QcClientState.active && QcClientState.plan.isEmpty()) {
+			// nothing planned yet: settle on the grid of what was just found (a /qc scan, a fresh apply)
+			QcInteraction.adoptNearbyLattice();
+		}
+		// standing roads and doors change how the plan compiles: redraw the block preview
+		QcClientState.changed();
 	}
 
 	private static void receiveResult(boolean ok, String message) {

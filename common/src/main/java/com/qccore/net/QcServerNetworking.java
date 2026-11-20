@@ -276,8 +276,9 @@ public final class QcServerNetworking {
     private static CompoundTag snapshot(Map<BlockPos, QcUnitRecord> units, BlockPos center) {
         List<QcUnitRecord> nearby = new ArrayList<>();
         for (Map.Entry<BlockPos, QcUnitRecord> entry : units.entrySet()) {
-            // Road records stay server-side: the client draws and aligns building units only.
-            if (entry.getValue().isBuilding() && entry.getKey().closerThan(center, PUSH_RADIUS)) {
+            // Road records go too, so the block preview joins new roads to them; the client draws,
+            // targets and aligns building units only.
+            if (entry.getKey().closerThan(center, PUSH_RADIUS)) {
                 nearby.add(entry.getValue());
             }
         }

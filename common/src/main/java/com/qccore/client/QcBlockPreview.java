@@ -3,6 +3,7 @@ package com.qccore.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.qccore.core.plan.PlanCompiler;
+import com.qccore.world.QcSurroundings;
 import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LightTexture;
@@ -95,7 +96,8 @@ public final class QcBlockPreview {
 			return;
 		}
 		try {
-			PlanCompiler.Compiled compiled = PlanCompiler.compile(QcClientState.plan, QcClientState.palette, anchor);
+			PlanCompiler.Compiled compiled = PlanCompiler.compile(QcClientState.plan, QcClientState.palette, anchor,
+					QcSurroundings.of(QcClientState.nearbyUnits.values(), anchor));
 			blocks = compiled.forExport(false);
 			problem = compiled.problems().isEmpty() ? null : compiled.problems().get(0);
 		} catch (RuntimeException e) {

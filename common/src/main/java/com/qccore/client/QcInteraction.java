@@ -14,6 +14,7 @@ import com.qccore.core.plan.QcPlan;
 import com.qccore.core.qc.BlockChoice;
 import com.qccore.core.qc.Roles;
 import com.qccore.core.qc.Templates;
+import com.qccore.world.QcSurroundings;
 import com.qccore.world.QcUnitRecord;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
@@ -288,6 +289,20 @@ public final class QcInteraction {
 				if (valid.isEmpty()) {
 					return false;
 				}
+				Set<Cell> fronts = standingDoorFronts();
+				int kept = 0;
+				for (java.util.Iterator<Cell> it = valid.iterator(); it.hasNext(); ) {
+					if (fronts.contains(it.next())) {
+						it.remove();
+						kept++;
+					}
+				}
+				if (kept > 0) {
+					QcClientState.say("QC: kept " + kept + " cell(s) free in front of a standing door");
+				}
+				if (valid.isEmpty()) {
+					return false;
+				}
 				String building = ensureBuilding();
 				boolean changed = false;
 				for (Cell cell : valid) {
@@ -399,7 +414,23 @@ public final class QcInteraction {
 			QcClientState.say(LAYER_MESSAGE);
 			return false;
 		}
-		for (QcPlan placed : templatePlacements(at)) {
+		List<QcPlan> placements = templatePlacements(at);
+		Set<Cell> fronts = standingDoorFronts();
+		if (!fronts.isEmpty()) {
+			int blocked = 0;
+			for (QcPlan placed : placements) {
+				for (Cell cell : placed.cells()) {
+					if (placed.hasUnit(cell) && fronts.contains(cell)) {
+						blocked++;
+					}
+				}
+			}
+			if (blocked > 0) {
+				QcClientState.say("QC: the template would wall up " + blocked + " standing door(s); move or turn it");
+				return false;
+			}
+		}
+		for (QcPlan placed : placements) {
 			QcClientState.plan.merge(placed.withFreshBuildings(QcClientState.plan));
 		}
 		int unset = 0;
@@ -684,7 +715,7 @@ public final class QcInteraction {
 		}
 		BlockPos origin = anchor.offset(cursor.cell().x() * 8, cursor.layer() * 8, cursor.cell().z() * 8);
 		for (QcUnitRecord record : QcClientState.nearbyUnits.values()) {
-			if (record.origin().equals(origin)) {
+			if (record.isBuilding() && record.origin().equals(origin)) {
 				return record;
 			}
 		}
@@ -731,6 +762,14 @@ public final class QcInteraction {
 
 	static void setGateFlag(QcUnit unit, UnitSide side, boolean value) {
 		Flags.setGate(unit, side, value);
+	}
+
+	/**
+	 * The session cells right in front of a door the server reported ({@code /qc scan}); the units and
+	 * template tools never plan a unit there, so a new plan cannot wall up a standing building.
+	 */
+	static Set<Cell> standingDoorFronts() {
+		return QcSurroundings.of(QcClientState.nearbyUnits.values(), QcClientState.anchor).doorFronts();
 	}
 
 	/** The world-space origin of a session cell: {@code anchor + 8 * (dx, dy, dz)}. */

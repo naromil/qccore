@@ -184,7 +184,15 @@ Server/client split:
   within 128 blocks of a player (nearest first, capped 4096) on join, after a successful build/align, and every 40
   ticks once the player moved 16 blocks. A `QcUnitRecord` also has a `kind` (`BUILDING`, or `ROAD` for road
   cells found by `/qc scan`) and `doors` (side bits), stored as `k`/`d` only when non-zero so older records read
-  back as door-less buildings. Road records are never pushed to the client, pruned or walked by align.
+  back as door-less buildings. Road records are pushed (the block preview needs them) but never pruned,
+  drawn as units, targeted or walked by align: client code that wants building units checks `isBuilding()`.
+- Plans read the index through `core/plan/Surroundings` (registry-free: standing road cells + door sides in
+  plan cells), built from records on the plan's lattice by `world/QcSurroundings.of(records, anchor)`: the
+  server's apply uses the dimension's whole index, the client's block preview the pushed records, the `.nbt`
+  export none. `RoadKit.build/networkArea(cells, joined, ...)` open the arms towards joined cells, measure lanes
+  across both and pave the mouths and plaza posts, never inside a joined cell; `District.build(plan, around)`
+  also keeps scanned doors' 3x3 approaches free of road furniture. The units/template tools refuse cells in
+  `doorFronts()`, and an index push with an empty plan re-snaps the anchor (`adoptNearbyLattice`, roads included).
 - `/qc scan [radius]` = `QcScanService` (server, read-only towards the world) over the registry-free
   `core/scan/QcScanner`: it reads the box (radius 8..64, 16 below to 40 above) once, picks the one of the 512
   grid offsets that explains the most building units (all 12 framework edges built, terrain blocks counting as

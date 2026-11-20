@@ -88,11 +88,21 @@ public final class RoadKit {
      * cells that write it identically; the first cell in (x, z) order keeps it.
      */
     public static Map<Long, UnitPos> networkArea(Set<UnitPos> cells) {
+        return networkArea(cells, Set.of());
+    }
+
+    /**
+     * The network area of {@code cells} when they join the standing road cells {@code joined}: a
+     * joined cell opens the arm towards it (so the shared mouth is paved by the planned cell) and
+     * completes plaza posts, but owns no column itself; its own paving is already in the world.
+     */
+    public static Map<Long, UnitPos> networkArea(Set<UnitPos> cells, Set<UnitPos> joined) {
+        Set<UnitPos> all = union(cells, joined);
         List<UnitPos> sorted = new ArrayList<>(cells);
         sorted.sort(Comparator.comparingInt(UnitPos::x).thenComparingInt(UnitPos::z));
         Map<Long, UnitPos> out = new LinkedHashMap<>();
         for (UnitPos cell : sorted) {
-            Set<Long> area = cellArea(arms(cell, cells));
+            Set<Long> area = cellArea(arms(cell, all));
             for (int x = 0; x <= 8; x++) {
                 for (int z = 0; z <= 8; z++) {
                     if (area.contains(key(x, z))) {
@@ -102,12 +112,28 @@ public final class RoadKit {
             }
         }
         for (UnitPos cell : sorted) {
-            if (cells.contains(new UnitPos(cell.x() + 1, cell.z())) && cells.contains(new UnitPos(cell.x(), cell.z() + 1))
-                    && cells.contains(new UnitPos(cell.x() + 1, cell.z() + 1))) {
-                out.putIfAbsent(key((cell.x() + 1) * PITCH, (cell.z() + 1) * PITCH), cell);
+            // every 2x2 block of road cells round this one paves its middle post (a plaza)
+            for (int dx = -1; dx <= 0; dx++) {
+                for (int dz = -1; dz <= 0; dz++) {
+                    int x0 = cell.x() + dx;
+                    int z0 = cell.z() + dz;
+                    if (all.contains(new UnitPos(x0, z0)) && all.contains(new UnitPos(x0 + 1, z0))
+                            && all.contains(new UnitPos(x0, z0 + 1)) && all.contains(new UnitPos(x0 + 1, z0 + 1))) {
+                        out.putIfAbsent(key((x0 + 1) * PITCH, (z0 + 1) * PITCH), cell);
+                    }
+                }
             }
         }
         return out;
+    }
+
+    private static Set<UnitPos> union(Set<UnitPos> cells, Set<UnitPos> joined) {
+        if (joined.isEmpty()) {
+            return cells;
+        }
+        Set<UnitPos> all = new HashSet<>(cells);
+        all.addAll(joined);
+        return all;
     }
 
     /** (x, z) -> lane 1..4: the Chebyshev distance to the nearest non-road column, capped at 4. */
@@ -148,8 +174,23 @@ public final class RoadKit {
      * @return layer-local position -> block id, floor first, then furniture, then medallions
      */
     public static Map<BlockPos, String> build(Map<UnitPos, BlockChoice> cells, Set<Long> openings, Set<Long> columns) {
-        Map<Long, UnitPos> area = networkArea(cells.keySet());
-        Map<Long, Integer> lane = lanes(area.keySet());
+        return build(cells, Set.of(), openings, columns);
+    }
+
+    /**
+     * Lays the road network so it continues into the standing road cells {@code joined}: their arms are
+     * open, lanes are measured across both, and the planned cells pave the mouths between them; nothing
+     * is written inside a joined cell.
+     */
+    public static Map<BlockPos, String> build(Map<UnitPos, BlockChoice> cells, Set<UnitPos> joined,
+                                              Set<Long> openings, Set<Long> columns) {
+        Map<Long, UnitPos> area = networkArea(cells.keySet(), joined);
+        Set<Long> laneArea = area.keySet();
+        if (!joined.isEmpty()) {
+            laneArea = new HashSet<>(area.keySet());
+            laneArea.addAll(networkArea(union(cells.keySet(), joined)).keySet());
+        }
+        Map<Long, Integer> lane = lanes(laneArea);
         Map<BlockPos, String> blocks = new LinkedHashMap<>();
         for (Map.Entry<Long, UnitPos> entry : area.entrySet()) {
             long column = entry.getKey();
@@ -184,7 +225,7 @@ public final class RoadKit {
             UnitPos cell = entry.getKey();
             BlockChoice style = entry.getValue();
             String medallion = style.get("medallion");
-            if (!isNode(arms(cell, cells.keySet())) || medallion == null) {
+            if (!isNode(arms(cell, union(cells.keySet(), joined))) || medallion == null) {
                 continue;
             }
             int ox = cell.x() * PITCH;
