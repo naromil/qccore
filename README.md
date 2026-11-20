@@ -18,6 +18,8 @@ from a **style**, the blocks chosen role by role (frame, beam, floor, wall, glas
 **block chooser**. Nothing is ever filled in for you: a role nobody chose stops the apply and is listed by name.
 The block chooser shows a live 3D sample of the selected building or road style (beside the roles on a wide
 screen, behind the **3D** chip on a narrow one; drag to turn it), built from exactly the blocks you chose.
+The design screen, when there is room, previews the design as a small building in your style's blocks, with
+default blocks only in the picture where a role is still unset.
 QCSimple's nine components (column, row, inner column...) are outdated rules and only survive as the
 `qcsimple` template, so plans and layouts made before still build.
 

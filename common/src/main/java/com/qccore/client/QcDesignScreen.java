@@ -6,9 +6,11 @@ import com.qccore.core.plan.BuildingSpec;
 import com.qccore.core.qc.BlockChoice;
 import com.qccore.core.qc.Design;
 import com.qccore.core.qc.Facades;
+import com.qccore.core.qc.Preview;
 import com.qccore.core.qc.Roles;
 import com.qccore.core.qc.Roofs;
 import com.qccore.core.qc.Templates;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +25,10 @@ import net.minecraft.network.chat.Component;
  * overrides a {@code Plan.building(...)} call takes - roof, facades (masks or pieces, {@code a|b} for a
  * rhythm), piers, partition, doors, lights and the on/off parts - plus the name of the style that
  * holds its blocks. No blocks are chosen here; that is the block chooser's job.
+ *
+ * <p>When the screen has room, a 3D preview shows the design as a small two-storey building: the
+ * blocks of its style where chosen, default blocks ({@link Preview}) elsewhere, only in the picture.
+ * Drag it to turn it.
  *
  * <p>Every change to a planned building is an undoable plan edit; the next new building starts from
  * whatever was edited last.
@@ -40,6 +46,10 @@ public class QcDesignScreen extends Screen {
 	private int left;
 	private int right;
 	private int top;
+	private final QcSceneView view = new QcSceneView();
+	private Object viewKey;
+	/** Where the preview goes (x, y, w, h), or {@code null} when the screen has no room for it. */
+	private int[] viewRect;
 
 	public QcDesignScreen(Screen parent) {
 		super(Component.literal("QC building design"));
@@ -63,9 +73,14 @@ public class QcDesignScreen extends Screen {
 	protected void init() {
 		commitFields();
 		this.facadeFields.clear();
-		this.left = this.width / 2 - COLUMN - 3;
-		this.right = this.width / 2 + 3;
+		int spare = this.width - 8 - 2 * COLUMN - 6;
+		int previewW = spare >= 124 ? Math.min(220, spare - 4) : 0;
+		this.left = (this.width - 2 * COLUMN - 6 - (previewW > 0 ? previewW + 4 : 0)) / 2;
+		this.right = this.left + COLUMN + 6;
 		this.top = 17 + Math.max(0, (this.height - 22 - 17 - 205) / 2);
+		int below = this.height - 26 - (this.top + 2 * 92 + 6);
+		this.viewRect = previewW > 0 ? new int[] {this.right + COLUMN + 4, this.top, previewW, 205}
+				: below >= 60 ? new int[] {this.right, this.top + 2 * 92 + 6, COLUMN, below} : null;
 		int inner = COLUMN - 8;
 		int body = QcUi.HEADER_HEIGHT + 3;
 
@@ -289,11 +304,51 @@ public class QcDesignScreen extends Screen {
 		for (int i = 0; i < labels.length; i++) {
 			g.drawString(this.font, labels[i], this.right + 6, layoutTop + body + i * ROW + 3, QcUi.MUTED, false);
 		}
+		renderPreview(g);
 		List<String> problems = design().problems();
 		if (!problems.isEmpty()) {
 			QcUi.status(g, this.font, "⚠ " + problems.get(0), QcUi.ERROR, this.width / 2, this.height - 36);
 		}
 		super.render(g, mouseX, mouseY, delta);
+	}
+
+	/** The design as a small building: its style's blocks where chosen, default blocks elsewhere. */
+	private void renderPreview(GuiGraphics g) {
+		int[] r = this.viewRect;
+		if (r == null) {
+			return;
+		}
+		QcUi.panel(g, this.font, r[0], r[1], r[2], r[3], "Preview", QcUi.color(QcTool.UNITS));
+		BuildingSpec spec = spec();
+		BlockChoice style = QcClientState.plan.styles().get(spec.style);
+		BlockChoice blocks = style != null && style.kind().equals(Roles.BUILDING) ? style : new BlockChoice(Roles.BUILDING);
+		Object key = List.of(spec.template == null ? "" : spec.template, new HashMap<>(spec.options), new HashMap<>(blocks.blocks()));
+		if (!key.equals(this.viewKey)) {
+			this.viewKey = key;
+			this.view.show(Templates.LEGACY.equals(spec.template) || !design().problems().isEmpty() ? null
+					: Preview.withDefaults(Preview.sample(blocks, spec.template, spec.options)));
+		}
+		int innerTop = r[1] + QcUi.HEADER_HEIGHT + 3;
+		int innerH = r[3] - QcUi.HEADER_HEIGHT - 16;
+		if (this.view.isEmpty()) {
+			String why = Templates.LEGACY.equals(spec.template) ? "no preview for the legacy template"
+					: !design().problems().isEmpty() ? "fix the design to see it" : this.view.status();
+			g.drawString(this.font, this.font.plainSubstrByWidth(why, r[2] - 10), r[0] + 5, innerTop + 2, QcUi.DIM, false);
+			return;
+		}
+		this.view.render(g, r[0] + 3, innerTop, r[2] - 6, innerH);
+		g.drawString(this.font, this.font.plainSubstrByWidth("default blocks where unset · drag to turn", r[2] - 8),
+				r[0] + 4, r[1] + r[3] - 11, QcUi.MUTED, false);
+	}
+
+	@Override
+	public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
+		int[] r = this.viewRect;
+		if (r != null && mouseX >= r[0] && mouseX < r[0] + r[2] && mouseY >= r[1] && mouseY < r[1] + r[3]) {
+			this.view.drag(dx);
+			return true;
+		}
+		return super.mouseDragged(mouseX, mouseY, button, dx, dy);
 	}
 
 	private static boolean validFacades(String text) {
