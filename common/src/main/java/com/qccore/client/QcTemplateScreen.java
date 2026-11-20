@@ -1,6 +1,8 @@
 package com.qccore.client;
 
 import com.qccore.client.QcUi.Chip;
+import com.qccore.core.plan.QcPlan;
+import com.qccore.core.qc.Preview;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,6 +18,9 @@ import net.minecraft.world.item.Items;
  * (geometry and style names only: the chosen blocks are stripped), or delete one. A stamped
  * template's styles are filled in the block chooser. The templates are a clickable
  * list (scroll with the wheel, double-click to use at once); the actions act on the selected one.
+ * The selected template is previewed in 3D, built with default blocks wherever its styles are
+ * empty ({@link Preview#withDefaults}); the defaults stay in the preview, the stamped template still
+ * brings empty styles for the player to fill.
  */
 public class QcTemplateScreen extends Screen {
 	private static final int COLUMN = 204;
@@ -38,6 +43,12 @@ public class QcTemplateScreen extends Screen {
 	private int lastClicked = -1;
 	private int left;
 	private int right;
+	private final QcSceneView view = new QcSceneView();
+	private String viewName;
+	private int[] viewRect;
+	private String viewStatus;
+	/** Templates touching more cells than this are not previewed. */
+	private static final int PREVIEW_CELLS = 256;
 
 	public QcTemplateScreen(Screen parent) {
 		super(Component.translatable("qccore.screen.templates"));
@@ -85,7 +96,8 @@ public class QcTemplateScreen extends Screen {
 		int half = (inner - 2) / 2;
 		this.addRenderableWidget(new Chip(this.right + 4, y, inner, 18, "Use for the template tool", () -> use(false))
 				.icon(() -> new ItemStack(Items.STRUCTURE_BLOCK), false).accent(QcUi.color(QcTool.TEMPLATE))
-				.tip("Switch to the template tool with this template (double-click a row does the same)"));
+				.tip("Switch to the template tool with this template (double-click a row does the same)."
+						+ " R turns a template a quarter; array and mirror repeat it"));
 		y += 20;
 		this.addRenderableWidget(new Chip(this.right + 4, y, half, ROW - 2, "Choose blocks…",
 				() -> this.minecraft.setScreen(new QcBlockChooserScreen(this)))
@@ -103,7 +115,8 @@ public class QcTemplateScreen extends Screen {
 		this.addRenderableWidget(this.nameField);
 		y += ROW + 2;
 		this.addRenderableWidget(new Chip(this.right + 4, y, inner, ROW, "Save plan as template", this::save)
-				.accent(QcUi.APPLY).tip("Saves buildings, partitions, roads and clears; the chosen blocks are stripped"));
+				.accent(QcUi.APPLY).tip("Saves buildings, partitions, roads and clears; the chosen blocks are stripped.\n"
+						+ QcTemplates.dir().toAbsolutePath()));
 
 		this.addRenderableWidget(new Chip(this.right + COLUMN - 100, this.height - 22, 100, 18, "Done",
 				() -> this.minecraft.setScreen(this.parent)).tip("Back to the tools (Esc)"));
@@ -135,16 +148,61 @@ public class QcTemplateScreen extends Screen {
 		int saveTop = TOP + 70;
 		QcUi.panel(g, this.font, this.right, saveTop, COLUMN, 58, "Save the current plan", QcUi.APPLY);
 		int hintY = saveTop + 62;
-		g.drawString(this.font, QcClientState.plan.isEmpty() ? "the plan is empty" : "plan: " + QcUi.planSummary(),
-				this.right + 2, hintY, QcUi.DIM, false);
-		g.drawString(this.font, "R turns a template a quarter;", this.right + 2, hintY + 12, QcUi.DIM, false);
-		g.drawString(this.font, "array and mirror repeat it", this.right + 2, hintY + 22, QcUi.DIM, false);
-		g.drawString(this.font, this.font.plainSubstrByWidth(QcTemplates.dir().toAbsolutePath().toString(), COLUMN),
-				this.right + 2, hintY + 36, 0xFF4A5260, false);
+		g.drawString(this.font, this.font.plainSubstrByWidth(QcClientState.plan.isEmpty() ? "the plan is empty"
+				: "plan: " + QcUi.planSummary(), COLUMN - 4), this.right + 2, hintY, QcUi.DIM, false);
+		int viewTop = hintY + 12;
+		int viewH = this.height - 26 - viewTop;
+		this.viewRect = null;
+		if (viewH >= 40 && !this.names.isEmpty()) {
+			QcUi.panel(g, this.font, this.right, viewTop, COLUMN, viewH, "Preview · default blocks", QcUi.color(QcTool.TEMPLATE));
+			refreshView(current);
+			int innerTop = viewTop + QcUi.HEADER_HEIGHT + 3;
+			int innerH = viewH - QcUi.HEADER_HEIGHT - 6;
+			if (this.view.isEmpty()) {
+				String why = this.viewStatus != null ? this.viewStatus
+						: this.view.status().isEmpty() ? "nothing to draw (old qcsimple units are not previewed)" : this.view.status();
+				g.drawString(this.font, this.font.plainSubstrByWidth(why, COLUMN - 10), this.right + 5,
+						innerTop + 2, QcUi.DIM, false);
+			} else {
+				this.view.render(g, this.right + 3, innerTop, COLUMN - 6, innerH);
+				this.viewRect = new int[] {this.right + 3, innerTop, COLUMN - 6, innerH};
+			}
+		}
 		if (!this.footer.isEmpty()) {
 			QcUi.status(g, this.font, this.footer, this.footerError ? QcUi.ERROR : QcUi.OK, this.width / 2, this.height - 40);
 		}
 		super.render(g, mouseX, mouseY, delta);
+	}
+
+	/** Builds the selected template for the preview when the selection changed. */
+	private void refreshView(String name) {
+		if (name.equals(this.viewName)) {
+			return;
+		}
+		this.viewName = name;
+		try {
+			QcPlan plan = QcTemplates.load(name).plan();
+			if (plan.cells().size() > PREVIEW_CELLS) {
+				this.view.show(null);
+				this.viewStatus = "too big to preview (" + plan.cells().size() + " cells)";
+				return;
+			}
+			this.view.show(Preview.withDefaults(plan));
+			this.viewStatus = null;
+		} catch (RuntimeException e) {
+			this.view.show(null);
+			this.viewStatus = "could not read " + name;
+		}
+	}
+
+	@Override
+	public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
+		int[] r = this.viewRect;
+		if (r != null && mouseX >= r[0] && mouseX < r[0] + r[2] && mouseY >= r[1] && mouseY < r[1] + r[3]) {
+			this.view.drag(dx);
+			return true;
+		}
+		return super.mouseDragged(mouseX, mouseY, button, dx, dy);
 	}
 
 	@Override

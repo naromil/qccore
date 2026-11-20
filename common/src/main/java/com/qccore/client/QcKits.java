@@ -29,7 +29,8 @@ import java.util.stream.Stream;
  * <pre>
  * {"kind": "building" | "road", "blocks": {"frame": "minecraft:spruce_log", "floor": ..., ...}}
  * </pre>
- * As in qckit there are no preset kits: a kit is whatever the player chose and saved.
+ * A kit is whatever the player chose and saved; the read-only batch presets the chooser lists beside
+ * them are {@link com.qccore.core.qc.Presets}.
  */
 public final class QcKits {
 	private static final String SUFFIX = ".json";

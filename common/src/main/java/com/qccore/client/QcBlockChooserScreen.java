@@ -3,10 +3,14 @@ package com.qccore.client;
 import com.qccore.client.QcUi.Chip;
 import com.qccore.core.plan.BlockIds;
 import com.qccore.core.qc.BlockChoice;
+import com.qccore.core.qc.Presets;
+import com.qccore.core.plan.BuildingSpec;
+import com.qccore.core.qc.Preview;
 import com.qccore.core.qc.Role;
 import com.qccore.core.qc.BlockStr;
 import com.qccore.core.qc.Roles;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,8 +32,17 @@ import net.minecraft.world.item.ItemStack;
  * ones still needing a block first; unset optional roles leave their part out, unset roles with a
  * fallback repeat the role they fall back to.
  *
- * <p>Kits save the selected style as a file and load a file into it. Every change is one undoable
- * plan edit.
+ * <p>A live 3D sample of the selected building or road style shows how the chosen blocks sit
+ * together (a two-storey building of the style's template with a default road in front, or a road
+ * crossing); unset roles are left out of it. On a wide screen it stands beside the roles, on a
+ * narrow one the "3D" chip swaps it in for the role list. Drag it to turn it. Hovering a role's row
+ * (wide screens, where both show) dims the sample and draws that role's blocks on top
+ * ({@link Preview#roleBlocks}), with their count under it.
+ *
+ * <p>Kits save the selected style as a file and load a file into it. The kit cycler also offers the
+ * {@link Presets} of the selected style's kind (the QC Shorts batches' blocks) before the saved kits;
+ * loading one copies its blocks into the style, where every role stays the player's to change. Every
+ * change is one undoable plan edit.
  */
 public class QcBlockChooserScreen extends Screen {
 	private static final int ROW = 15;
@@ -53,6 +66,15 @@ public class QcBlockChooserScreen extends Screen {
 	private int rightW;
 	private int top;
 	private int rowsPerPage;
+	private final QcSceneView view = new QcSceneView();
+	private Object viewKey;
+	/** Narrow screens: whether the roles panel shows the 3D sample instead of the role list. */
+	private boolean show3d;
+	/** Whether the 3D sample has its own panel beside the roles. */
+	private boolean side;
+	private int sideW;
+	/** Where the 3D sample was last drawn (x, y, w, h), for dragging; {@code null} when hidden. */
+	private int[] viewRect;
 
 	public QcBlockChooserScreen(Screen parent) {
 		super(Component.literal("QC block chooser"));
@@ -79,7 +101,10 @@ public class QcBlockChooserScreen extends Screen {
 		}
 		QcClientState.chooserStyle = this.style;
 		int total = Math.min(this.width - 8, 420);
-		this.left = (this.width - total) / 2;
+		int spare = this.width - 8 - 420;
+		this.side = spare >= 124;
+		this.sideW = this.side ? Math.min(220, spare - 4) : 0;
+		this.left = (this.width - total - (this.side ? this.sideW + 4 : 0)) / 2;
 		this.right = this.left + LEFT_W + 4;
 		this.rightW = total - LEFT_W - 4;
 		this.top = 19;
@@ -128,13 +153,20 @@ public class QcBlockChooserScreen extends Screen {
 		// 2. Kits
 		int kitTop = newTop + 46;
 		y = kitTop + body;
-		List<String> kits = QcKits.list();
+		List<KitEntry> kits = kitEntries();
 		this.kit = kits.isEmpty() ? 0 : Math.floorMod(this.kit, kits.size());
 		this.addRenderableWidget(new Chip(this.left + 4, y, LEFT_W - 8 - 40, CHIP_H, "", () -> {
 			this.kit++;
+			if (!kits.isEmpty()) {
+				KitEntry next = kits.get(Math.floorMod(this.kit, kits.size()));
+				this.footer = next.preset()
+						? "preset " + next.label() + " (" + Presets.get(next.name()).source() + "): Load copies it into the style"
+						: "kit " + next.name();
+				this.footerError = false;
+			}
 			rebuild();
-		}).label(() -> kits.isEmpty() ? "no kits saved" : "kit: " + kits.get(Math.floorMod(this.kit, kits.size())) + " ›")
-				.tip("Next kit in qccore/kits"));
+		}).label(() -> kits.isEmpty() ? "no kits saved" : kits.get(Math.floorMod(this.kit, kits.size())).label() + " ›")
+				.tip("Next kit: the QC Shorts presets of this kind of style, then your kits in qccore/kits"));
 		this.addRenderableWidget(new Chip(this.left + LEFT_W - 42, y, 38, CHIP_H, "Load", () -> loadKit(kits))
 				.tip("Load the kit's blocks into the selected style"));
 		y += ROW;
@@ -147,8 +179,9 @@ public class QcBlockChooserScreen extends Screen {
 
 		// 3. Roles of the selected style
 		this.rowsPerPage = Math.max(1, (bottom - this.top - body - ROW - 4) / ROW);
+		boolean listRoles = this.side || !this.show3d || !previewable();
 		if (this.work != null) {
-			List<Role> roles = visibleRoles();
+			List<Role> roles = listRoles ? visibleRoles() : List.of();
 			this.page = Math.max(0, Math.min(this.page, (roles.size() - 1) / this.rowsPerPage));
 			y = this.top + body;
 			int fieldX = this.right + 84;
@@ -198,6 +231,13 @@ public class QcBlockChooserScreen extends Screen {
 					rebuild();
 				}).label(() -> this.allRoles ? "all roles" : "used roles").selected(() -> this.allRoles)
 						.tip("Show every role of this kind, or only those the plan's buildings and roads reach"));
+				if (!this.side) {
+					this.addRenderableWidget(new Chip(this.right + 80, navY, 26, CHIP_H, "3D", () -> {
+						storeFields();
+						this.show3d = !this.show3d;
+						rebuild();
+					}).selected(() -> this.show3d).tip("Show how the chosen blocks sit together (drag to turn)"));
+				}
 			}
 			if (pages > 1) {
 				this.addRenderableWidget(new Chip(this.right + this.rightW - 66, navY, 30, CHIP_H, "‹", () -> {
@@ -328,13 +368,35 @@ public class QcBlockChooserScreen extends Screen {
 		rebuild();
 	}
 
-	private void loadKit(List<String> kits) {
+	/** A kit the cycler offers: a batch preset of the selected style's kind, or a saved kit file. */
+	private record KitEntry(String name, boolean preset) {
+		String label() {
+			return this.preset ? this.name.replace('_', ' ') : "kit: " + this.name;
+		}
+	}
+
+	/** The presets of the selected style's kind first, then the player's saved kits. */
+	private List<KitEntry> kitEntries() {
+		List<KitEntry> entries = new ArrayList<>();
+		if (this.work != null) {
+			for (String name : Presets.names(this.work.kind())) {
+				entries.add(new KitEntry(name, true));
+			}
+		}
+		for (String name : QcKits.list()) {
+			entries.add(new KitEntry(name, false));
+		}
+		return entries;
+	}
+
+	private void loadKit(List<KitEntry> kits) {
 		if (kits.isEmpty() || this.work == null) {
 			return;
 		}
-		String name = kits.get(Math.floorMod(this.kit, kits.size()));
+		KitEntry entry = kits.get(Math.floorMod(this.kit, kits.size()));
+		String name = entry.name();
 		try {
-			BlockChoice loaded = QcKits.load(name);
+			BlockChoice loaded = entry.preset() ? Presets.get(name).choice() : QcKits.load(name);
 			if (!loaded.kind().equals(this.work.kind())) {
 				this.footer = "kit " + name + " is a " + loaded.kind() + " kit; the style is a " + this.work.kind() + " style";
 				this.footerError = true;
@@ -343,7 +405,7 @@ public class QcBlockChooserScreen extends Screen {
 			this.work = loaded;
 			this.fields.clear();
 			commit();
-			this.footer = "loaded kit " + name + " into " + this.style;
+			this.footer = "loaded " + entry.label() + " into " + this.style + (entry.preset() ? "; every role stays yours to change" : "");
 			this.footerError = false;
 			rebuild();
 		} catch (RuntimeException e) {
@@ -385,6 +447,29 @@ public class QcBlockChooserScreen extends Screen {
 		} else {
 			QcUi.panel(g, this.font, this.right, this.top, this.rightW, bottom - this.top,
 					this.work.kind() + " style · " + this.style, QcUi.OK);
+			if (previewable() && (this.side || this.show3d)) {
+				int x = this.side ? this.right + this.rightW + 4 : this.right;
+				int w = this.side ? this.sideW : this.rightW;
+				int h = this.side ? bottom - this.top : bottom - this.top - ROW - 2;
+				if (this.side) {
+					QcUi.panel(g, this.font, x, this.top, w, h, "Preview", QcUi.ACCENT);
+				}
+				refreshView();
+				String hovered = this.side ? hoveredRole(mouseX, mouseY) : null;
+				this.view.highlight(Preview.sampleStyle(this.work.kind()), hovered);
+				int viewTop = this.top + body;
+				int viewH = h - body - 14;
+				this.view.render(g, x + 3, viewTop, w - 6, viewH);
+				this.viewRect = new int[] {x + 3, viewTop, w - 6, viewH};
+				int lit = this.view.highlighted();
+				String note = !this.view.status().isEmpty() ? this.view.status()
+						: lit > 0 ? hovered + ": " + lit + " blocks"
+						: lit == 0 ? hovered + ": not in this sample"
+						: this.view.unset() > 0 ? this.view.unset() + " unset roles not drawn · drag to turn" : "drag to turn";
+				g.drawString(this.font, this.font.plainSubstrByWidth(note, w - 8), x + 4, this.top + h - 11, QcUi.MUTED, false);
+			} else {
+				this.viewRect = null;
+			}
 			Set<String> missing = QcBlockPreview.missing().get(this.style);
 			for (Map.Entry<String, EditBox> entry : this.fields.entrySet()) {
 				EditBox field = entry.getValue();
@@ -405,6 +490,58 @@ public class QcBlockChooserScreen extends Screen {
 			QcUi.status(g, this.font, this.footer, this.footerError ? QcUi.ERROR : QcUi.OK, this.width / 2, this.height - 36);
 		}
 		super.render(g, mouseX, mouseY, delta);
+	}
+
+	/** The role whose row (name, field and buttons) is under the mouse, or {@code null}. */
+	private String hoveredRole(int mouseX, int mouseY) {
+		if (mouseX < this.right || mouseX >= this.right + this.rightW) {
+			return null;
+		}
+		for (Map.Entry<String, EditBox> entry : this.fields.entrySet()) {
+			int rowY = entry.getValue().getY() - 1;
+			if (mouseY >= rowY && mouseY < rowY + ROW) {
+				return entry.getKey();
+			}
+		}
+		return null;
+	}
+
+	/** Whether the selected style has a 3D sample (building and road styles do, decor ones do not). */
+	private boolean previewable() {
+		return this.work != null && !this.work.kind().equals(Roles.DECOR);
+	}
+
+	/** Regenerates the 3D sample when the working copy or the template it is shown with changed. */
+	private void refreshView() {
+		BuildingSpec spec = specFor(this.style);
+		String template = spec == null ? null : spec.template;
+		Map<String, String> options = spec == null ? Map.of() : new HashMap<>(spec.options);
+		Object key = List.of(new HashMap<>(this.work.blocks()), this.work.kind(), template == null ? "" : template, options);
+		if (!key.equals(this.viewKey)) {
+			this.viewKey = key;
+			this.view.show(Preview.sample(this.work, template, options));
+		}
+	}
+
+	/** The building the style is shown on: the first of the plan's buildings using it, else the edited design's. */
+	private static BuildingSpec specFor(String style) {
+		for (BuildingSpec spec : QcClientState.plan.buildings().values()) {
+			if (style.equals(spec.style)) {
+				return spec;
+			}
+		}
+		BuildingSpec design = QcClientState.editedDesign();
+		return design != null && style.equals(design.style) ? design : null;
+	}
+
+	@Override
+	public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
+		int[] r = this.viewRect;
+		if (r != null && mouseX >= r[0] && mouseX < r[0] + r[2] && mouseY >= r[1] && mouseY < r[1] + r[3]) {
+			this.view.drag(dx);
+			return true;
+		}
+		return super.mouseDragged(mouseX, mouseY, button, dx, dy);
 	}
 
 	private static String firstId(String text) {

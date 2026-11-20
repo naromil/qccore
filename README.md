@@ -15,7 +15,12 @@ template - house, shop, hall, office, warehouse, tower, academy, townhouse, vill
 workshop, library, loft, qc_raw - with its own roof, facades, piers, partition, doors and lights) and
 **roads** (qckit's 7-wide road). The geometry never names a block: every building and road reads its blocks
 from a **style**, the blocks chosen role by role (frame, beam, floor, wall, glass, row, roof, ...) in the
-**block chooser**. There are no preset blocks; a role nobody chose stops the apply and is listed by name.
+**block chooser**. Nothing is ever filled in for you: a role nobody chose stops the apply and is listed by name.
+The block chooser shows a live 3D sample of the selected building or road style (beside the roles on a wide
+screen, behind the **3D** chip on a narrow one; drag to turn it), built from exactly the blocks you chose. On a wide screen,
+hover over a role's row to light up where that role's blocks sit (the rest dims, and the count shows under it).
+The design screen, when there is room, previews the design as a small building in your style's blocks, with
+default blocks only in the picture where a role is still unset.
 QCSimple's nine components (column, row, inner column...) are outdated rules and only survive as the
 `qcsimple` template, so plans and layouts made before still build.
 
@@ -91,9 +96,15 @@ left out. **decor on/off**, **density** and **seed** sit under the decor style's
 buildings with their designs and style names, partitions, roads, cleared cells — to
 `<gameDir>/qccore/templates/<name>.qct.nbt`, **with every block choice stripped**. Stamping a template makes
 new buildings and adds its styles empty (a style of the same name you already filled is used as it is);
-fill them in the block chooser, then apply. **Kits** (block chooser → Kits) save one style's blocks as
+fill them in the block chooser, then apply. The template screen previews the selected template in 3D, built
+with default blocks (the brick-and-spruce house and high street of the QC Shorts brickworks build) where its
+styles are empty; the defaults are only for that picture and never go into your plan. **Kits** (block chooser → Kits) save one style's blocks as
 editable JSON in `<gameDir>/qccore/kits/<name>.json` (`{"kind": "building" | "road", "blocks": {role: id}}`)
-and load them into any style of the same kind. As in qckit there are no preset kits.
+and load them into any style of the same kind. The kit cycler also offers **presets**: the building and street
+blocks of eight QC Shorts batches (brickworks, alpine village, sandstone bazaar, deepslate foundry, cherry gardens,
+white citadel, canal harbour, college quads). Loading one copies its blocks into the selected style as a starting
+point; every role stays yours to change, and roles the batch left unset stay open (Create's framed glass is
+vanilla glass here).
 
 ## Requirements
 
