@@ -177,7 +177,16 @@ Server/client split:
 - `QcUnitIndex extends SavedData`, state id `qccore_units`, holding
   `Map<ResourceLocation dimension, LinkedHashMap<BlockPos origin, QcUnitRecord>>`. `QcServerNetworking` pushes every unit
   within 128 blocks of a player (nearest first, capped 4096) on join, after a successful build/align, and every 40
-  ticks once the player moved 16 blocks.
+  ticks once the player moved 16 blocks. A `QcUnitRecord` also has a `kind` (`BUILDING`, or `ROAD` for road
+  cells found by `/qc scan`) and `doors` (side bits), stored as `k`/`d` only when non-zero so older records read
+  back as door-less buildings. Road records are never pushed to the client, pruned or walked by align.
+- `/qc scan [radius]` = `QcScanService` (server, read-only towards the world) over the registry-free
+  `core/scan/QcScanner`: it reads the box (radius 8..64, 16 below to 40 above) once, picks the one of the 512
+  grid offsets that explains the most building units (all 12 framework edges built, terrain blocks counting as
+  gaps, interior at least a quarter air), then classifies shared sides (wall / gate = 3x3 passage at floor
+  level / open, mapped onto the partition flags), doors (door blocks at a 4, y 1-2, or qckit's 3x3 archway) and
+  floods road cells from the ground units (laid 7x7 floor, terrain excluded, at most 1/6 of the space above
+  filled). It only adds origins the index doesn't know.
 - `QcClientState` is the static single-session state (`active`, `overlayVisible`, `anchor`, `alignA/B/C`, `layers`,
   `palette`, `nearbyUnits`, `dimension`, `message`) plus the planning state (`plan`, `planVersion`, `history`, `tool`,
   `shape`, `points`, `componentMask`, `modifiers`, `roadStyle(s)`, `template*`, `blockPreview`), read by the renderer,

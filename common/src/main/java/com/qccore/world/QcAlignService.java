@@ -56,7 +56,7 @@ public final class QcAlignService {
 
         Map<BlockPos, QcUnitRecord> units = index.units(dimension);
         QcUnitRecord target = units.get(unitOrigin);
-        if (target == null) {
+        if (target == null || !target.isBuilding()) {
             return new QcResult(false, "no QC unit recorded at " + unitOrigin.toShortString());
         }
 
@@ -74,8 +74,8 @@ public final class QcAlignService {
                     continue;
                 }
                 QcUnitRecord record = units.get(neighbour);
-                if (record == null) {
-                    continue;
+                if (record == null || !record.isBuilding()) {
+                    continue;                       // scanned road cells are not part of a building
                 }
                 building.put(neighbour, record);
                 queue.add(neighbour);

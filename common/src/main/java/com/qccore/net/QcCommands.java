@@ -1,6 +1,7 @@
 package com.qccore.net;
 
 import com.qccore.core.QcResult;
+import com.qccore.world.QcScanService;
 import com.qccore.world.QcUndoService;
 import com.qccore.world.QcUnitIndex;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -19,8 +20,8 @@ import java.util.Map;
 import com.qccore.world.QcUnitRecord;
 
 /**
- * The {@code /qc} command: what the index knows, how to forget a region of it and how to undo and
- * redo applied plans. Every child needs permission level 2; {@code info} and {@code forget} work from
+ * The {@code /qc} command: what the index knows, how to scan standing QC units into it, how to forget a
+ * region of it and how to undo and redo applied plans. Every child needs permission level 2; {@code info}, {@code scan} and {@code forget} work from
  * the dedicated server console as well, {@code undo} and {@code redo} need a player.
  */
 public final class QcCommands {
@@ -38,6 +39,11 @@ public final class QcCommands {
                         .then(Commands.literal("info")
                                 .requires(source -> source.hasPermission(2))
                                 .executes(context -> info(context.getSource())))
+                        .then(Commands.literal("scan")
+                                .requires(source -> source.hasPermission(2))
+                                .executes(context -> scan(context.getSource(), QcScanService.DEFAULT_RADIUS))
+                                .then(Commands.argument("radius", IntegerArgumentType.integer(8, QcScanService.MAX_RADIUS))
+                                        .executes(context -> scan(context.getSource(), IntegerArgumentType.getInteger(context, "radius")))))
                         .then(Commands.literal("undo")
                                 .requires(source -> source.hasPermission(2))
                                 .executes(context -> undo(context.getSource())))
@@ -70,6 +76,19 @@ public final class QcCommands {
         source.sendSuccess(() -> Component.literal(close + " within " + INFO_RADIUS + " blocks of " + pos.getX() + " " + pos.getY()
                 + " " + pos.getZ()), false);
         return total;
+    }
+
+    private static int scan(CommandSourceStack source, int radius) {
+        QcResult result = QcScanService.scan(source.getLevel(), BlockPos.containing(source.getPosition()), radius);
+        if (!result.ok()) {
+            source.sendFailure(Component.literal(result.message()));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(result.message()), false);
+        if (source.getEntity() instanceof ServerPlayer player) {
+            QcServerNetworking.push(player);
+        }
+        return 1;
     }
 
     private static int undo(CommandSourceStack source) throws com.mojang.brigadier.exceptions.CommandSyntaxException {

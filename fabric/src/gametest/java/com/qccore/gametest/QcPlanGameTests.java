@@ -12,7 +12,9 @@ import com.qccore.core.qc.BlockChoice;
 import com.qccore.core.qc.Roles;
 import com.qccore.world.QcPlanService;
 import com.qccore.world.QcUndoService;
+import com.qccore.world.QcScanService;
 import com.qccore.world.QcUnitIndex;
+import com.qccore.world.QcUnitRecord;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
@@ -298,6 +300,7 @@ public class QcPlanGameTests implements FabricGameTest {
         if (!decor) {
             throw new AssertionError("no street decor in front of the house");
         }
+        scanFindsTheHouse(world, anchor);
         if (!QcUndoService.undo(player).ok()) {
             throw new AssertionError("could not undo the house");
         }
@@ -324,6 +327,40 @@ public class QcPlanGameTests implements FabricGameTest {
         if (!result.message().equals(message)) {
             throw new AssertionError("expected \"" + message + "\" but got \"" + result.message() + "\"");
         }
+    }
+
+    /** /qc scan on the applied house, with the index emptied first: it finds the four units, the door and the road. */
+    private static void scanFindsTheHouse(ServerLevel world, BlockPos anchor) {
+        ResourceLocation dimension = world.dimension().location();
+        Map<BlockPos, QcUnitRecord> before = new java.util.LinkedHashMap<>(QcUnitIndex.get(world).units(dimension));
+        clearIndex(world, anchor);
+        QcResult scanned = QcScanService.scan(world, anchor.offset(8, 12, 8), 32);
+        if (!scanned.ok()) {
+            throw new AssertionError("scan found nothing: " + scanned.message());
+        }
+        Map<BlockPos, QcUnitRecord> units = QcUnitIndex.get(world).units(dimension);
+        int[][] cells = {{0, 8, 0}, {8, 8, 0}, {0, 16, 0}, {8, 16, 0}};
+        int doors = 0;
+        for (int[] c : cells) {
+            QcUnitRecord record = units.get(anchor.offset(c[0], c[1], c[2]));
+            if (record == null || !record.isBuilding()) {
+                throw new AssertionError("scan missed the unit at +" + c[0] + "," + c[1] + "," + c[2] + ": " + scanned.message());
+            }
+            doors |= record.doors();
+        }
+        QcUnitRecord west = units.get(anchor.offset(0, 8, 0));
+        if (((west.walls() | west.gates()) & 2) == 0) {
+            throw new AssertionError("no partition flag on the shared east side: " + west);
+        }
+        if ((doors & 4) == 0) {
+            throw new AssertionError("no door found on the south (road) face: " + scanned.message());
+        }
+        QcUnitRecord road = units.get(anchor.offset(0, 8, 8));
+        if (road == null || road.kind() != QcUnitRecord.ROAD) {
+            throw new AssertionError("road cell in front not found: " + scanned.message());
+        }
+        clearIndex(world, anchor);
+        before.forEach((origin, record) -> QcUnitIndex.get(world).put(dimension, origin, record));
     }
 
     private static void clearIndex(ServerLevel world, BlockPos center) {

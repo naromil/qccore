@@ -62,7 +62,8 @@ public final class QcUnitIndex extends SavedData {
     /**
      * Drops the records within {@code radius} blocks of {@code center} whose origin block is air: a
      * built unit always carries a framework block at its origin corner, so an air origin means the
-     * building was mined by hand and must no longer be matched against.
+     * building was mined by hand and must no longer be matched against. Road records (from
+     * {@code /qc scan}) have no framework at their origin and are never pruned here.
      *
      * @return the number of dropped records
      */
@@ -75,8 +76,9 @@ public final class QcUnitIndex extends SavedData {
         int dropped = 0;
         Iterator<Map.Entry<BlockPos, QcUnitRecord>> iterator = units.entrySet().iterator();
         while (iterator.hasNext()) {
-            BlockPos origin = iterator.next().getKey();
-            if (!origin.closerThan(center, radius)) {
+            Map.Entry<BlockPos, QcUnitRecord> entry = iterator.next();
+            BlockPos origin = entry.getKey();
+            if (!entry.getValue().isBuilding() || !origin.closerThan(center, radius)) {
                 continue;
             }
             if (world.getBlockState(origin).isAir()) {
@@ -130,8 +132,7 @@ public final class QcUnitIndex extends SavedData {
                 if (pos.length != 3) {
                     continue;
                 }
-                QcUnitRecord record = new QcUnitRecord(new BlockPos(pos[0], pos[1], pos[2]),
-                        unitTag.getByte("w"), unitTag.getByte("g"));
+                QcUnitRecord record = QcUnitRecord.fromNbt(unitTag);
                 records.put(record.origin(), record);
             }
             index.byDimension.put(dimension, records);
