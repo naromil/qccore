@@ -51,7 +51,9 @@ public final class QcPlanService {
         if (problem != null) {
             return problem;
         }
-        PlanCompiler.Compiled compiled = PlanCompiler.compile(plan, palette, anchor);
+        ServerLevel level = player.serverLevel();
+        PlanCompiler.Compiled compiled = PlanCompiler.compile(plan, palette, anchor,
+                QcSurroundings.of(QcUnitIndex.get(level).units(level.dimension().location()).values(), anchor));
         if (!compiled.problems().isEmpty()) {
             return new QcResult(false, compiled.problems().get(0));
         }

@@ -103,4 +103,36 @@ class RoadKitTest {
         assertEquals(47, blocks.size());
         assertNull(blocks.get(new net.minecraft.core.BlockPos(1, 0, 1)));
     }
+
+    @Test
+    void aRoadJoiningAStandingRoadPavesTheMouthAndWritesNothingInsideIt() {
+        Map<UnitPos, BlockChoice> end = cells(0, 0);
+        Set<UnitPos> standing = Set.of(new UnitPos(1, 0));
+        Map<net.minecraft.core.BlockPos, String> alone = RoadKit.build(end, Set.of(), Set.of());
+        Map<net.minecraft.core.BlockPos, String> joined = RoadKit.build(end, standing, Set.of(), Set.of());
+        // alone the east plane is a closed side; joined, the planned cell paves the mouth (x 8)
+        assertNull(alone.get(new net.minecraft.core.BlockPos(8, 0, 4)));
+        assertEquals("lane4", joined.get(new net.minecraft.core.BlockPos(8, 0, 4)));
+        // lanes run on into the standing street instead of turning back at an edge
+        assertEquals("lane4", joined.get(new net.minecraft.core.BlockPos(7, 0, 4)));
+        assertEquals("lane1", alone.get(new net.minecraft.core.BlockPos(7, 0, 4)));
+        for (net.minecraft.core.BlockPos p : joined.keySet()) {
+            assertTrue(p.getX() <= 8, "nothing written inside the standing cell: " + p);
+        }
+        assertEquals(Set.of(), RoadKit.networkArea(Set.of(), standing).keySet());
+    }
+
+    @Test
+    void standingRoadCellsCountForPlazasAndMedallions() {
+        Map<UnitPos, BlockChoice> one = cells(0, 0);
+        Set<UnitPos> bend = Set.of(new UnitPos(1, 0), new UnitPos(0, 1));
+        Map<net.minecraft.core.BlockPos, String> corner = RoadKit.build(one, bend, Set.of(), Set.of());
+        assertEquals("medallion", corner.get(new net.minecraft.core.BlockPos(3, 0, 3)));
+        assertEquals("centre", corner.get(new net.minecraft.core.BlockPos(4, 0, 4)));
+        assertNull(corner.get(new net.minecraft.core.BlockPos(8, 0, 8)), "no plaza post without the fourth cell");
+
+        Set<UnitPos> square = Set.of(new UnitPos(1, 0), new UnitPos(0, 1), new UnitPos(1, 1));
+        assertTrue(RoadKit.networkArea(one.keySet(), square).containsKey(RoadKit.key(8, 8)),
+                "the post shared with three standing cells is paved by the planned one");
+    }
 }

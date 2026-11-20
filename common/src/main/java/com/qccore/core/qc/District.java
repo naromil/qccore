@@ -6,6 +6,7 @@ import com.qccore.core.plan.BuildingSpec;
 import com.qccore.core.plan.Cell;
 import com.qccore.core.plan.QcPlan;
 import com.qccore.core.plan.RoadKit;
+import com.qccore.core.plan.Surroundings;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -51,6 +52,14 @@ public final class District {
     }
 
     public static Result build(QcPlan plan) {
+        return build(plan, Surroundings.NONE);
+    }
+
+    /**
+     * As {@link #build(QcPlan)}, with the roads joining the standing road cells of {@code around} and
+     * keeping the approach of its standing doors free of road furniture.
+     */
+    public static Result build(QcPlan plan, Surroundings around) {
         List<String> problems = new ArrayList<>();
         List<String> notes = new ArrayList<>();
         Map<String, Set<String>> reached = new LinkedHashMap<>();
@@ -160,7 +169,7 @@ public final class District {
         Map<Long, Set<Integer>> roadFloor = new HashMap<>();
         for (Map.Entry<Integer, Map<UnitPos, BlockChoice>> entry : roadLayers.entrySet()) {
             int layer = entry.getKey();
-            Set<Long> openings = new HashSet<>();
+            Set<Long> openings = new HashSet<>(around.doorOpenings(layer));
             Set<Long> columns = new HashSet<>();
             for (Building b : made.values()) {
                 if (b.groundLayer == layer) {
@@ -176,10 +185,11 @@ public final class District {
                     }
                 }
             }
-            for (Map.Entry<BlockPos, String> road : RoadKit.build(entry.getValue(), openings, columns).entrySet()) {
+            Set<UnitPos> joined = around.joinedRoads(plan, layer);
+            for (Map.Entry<BlockPos, String> road : RoadKit.build(entry.getValue(), joined, openings, columns).entrySet()) {
                 roadBlocks.put(road.getKey().offset(0, layer * 8, 0), road.getValue());
             }
-            for (long column : RoadKit.networkArea(entry.getValue().keySet()).keySet()) {
+            for (long column : RoadKit.networkArea(entry.getValue().keySet(), joined).keySet()) {
                 roadFloor.computeIfAbsent(column, k -> new HashSet<>()).add(layer * 8);
             }
         }

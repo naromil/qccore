@@ -61,11 +61,19 @@ public final class PlanCompiler {
     }
 
     public static Compiled compile(QcPlan plan, BlockPalette palette, BlockPos anchor) {
+        return compile(plan, palette, anchor, Surroundings.NONE);
+    }
+
+    /**
+     * Compiles the plan where it meets what already stands: roads join the standing road cells of
+     * {@code around} and keep its doors' approaches free. The export uses {@link Surroundings#NONE}.
+     */
+    public static Compiled compile(QcPlan plan, BlockPalette palette, BlockPos anchor, Surroundings around) {
         List<String> problems = new ArrayList<>();
         Map<BlockPos, BlockState> blocks = new LinkedHashMap<>();
 
         // 1. qckit buildings and roads
-        District.Result district = District.build(plan);
+        District.Result district = District.build(plan, around);
         problems.addAll(district.problems());
         Set<String> unknown = new LinkedHashSet<>();
         for (Map.Entry<BlockPos, String> entry : district.blocks().entrySet()) {
@@ -102,7 +110,8 @@ public final class PlanCompiler {
         Set<BlockPos> air = new LinkedHashSet<>();
         for (Map.Entry<Integer, Map<UnitPos, String>> layerEntry : plan.roadLayers().entrySet()) {
             BlockPos base = anchor.offset(0, layerEntry.getKey() * 8, 0);
-            for (long column : RoadKit.networkArea(layerEntry.getValue().keySet()).keySet()) {
+            for (long column : RoadKit.networkArea(layerEntry.getValue().keySet(),
+                    around.joinedRoads(plan, layerEntry.getKey())).keySet()) {
                 for (int y = 1; y <= 7; y++) {
                     air.add(base.offset(RoadKit.x(column), y, RoadKit.z(column)));
                 }
