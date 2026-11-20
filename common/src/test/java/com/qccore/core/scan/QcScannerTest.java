@@ -32,12 +32,16 @@ class QcScannerTest {
     }
 
     private void frame(int ox, int oy, int oz) {
+        frame(ox, oy, oz, "minecraft:spruce_log");
+    }
+
+    private void frame(int ox, int oy, int oz, String block) {
         for (int i = 0; i <= 8; i++) {
             for (int p = 0; p <= 8; p += 8) {
                 for (int q = 0; q <= 8; q += 8) {
-                    set(ox + p, oy + i, oz + q, "minecraft:spruce_log[axis=y]");
-                    set(ox + i, oy + p, oz + q, "minecraft:spruce_log[axis=x]");
-                    set(ox + p, oy + q, oz + i, "minecraft:spruce_log[axis=z]");
+                    set(ox + p, oy + i, oz + q, block);
+                    set(ox + i, oy + p, oz + q, block);
+                    set(ox + p, oy + q, oz + i, block);
                 }
             }
         }
@@ -123,6 +127,26 @@ class QcScannerTest {
         assertNotNull(road);
         assertEquals(QcScanner.Kind.ROAD, road.kind());
         assertNull(at(result, 11, 66, 13));
+    }
+
+    @Test
+    void readsATuffFrameworkAndACalciteStreet() {
+        for (int x = -4; x <= 30; x++) {
+            for (int z = -4; z <= 30; z++) {
+                set(x, 65, z, "minecraft:grass_block");
+            }
+        }
+        frame(3, 66, 5, "minecraft:tuff");                                  // white citadel's framework
+        for (int i = 1; i <= 7; i++) {
+            for (int k = 1; k <= 7; k++) {
+                set(3 + i, 66, 13 + k, i == 1 || i == 7 ? "minecraft:polished_diorite" : "minecraft:calcite");
+            }
+        }
+        QcScanner.Result result = new QcScanner(this::get, -4, 60, -4, 30, 90, 30).scan();
+        assertNotNull(result);
+        assertEquals(1, result.count(QcScanner.Kind.BUILDING));
+        assertNotNull(at(result, 3, 66, 13));
+        assertEquals(QcScanner.Kind.ROAD, at(result, 3, 66, 13).kind());
     }
 
     @Test

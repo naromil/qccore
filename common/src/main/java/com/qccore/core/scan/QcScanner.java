@@ -54,11 +54,15 @@ public final class QcScanner {
 
     static final int[][] SIDES = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}}; // N E S W as (dx, dz)
 
-    /** Natural blocks that never make a road floor, so open terrain is not read as a street. */
+    /**
+     * Natural blocks that never make a road floor or a framework edge, so open terrain is not read as a
+     * street and a cave is not read as a room. Tuff and calcite are left out: they are building stones in
+     * qckit styles (the white citadel's tuff framework, its calcite street lanes).
+     */
     private static final Set<String> TERRAIN = Set.of(
             "grass_block", "dirt", "coarse_dirt", "rooted_dirt", "podzol", "mycelium", "dirt_path", "farmland",
             "mud", "sand", "red_sand", "gravel", "clay", "stone", "granite", "diorite", "andesite", "deepslate",
-            "tuff", "calcite", "dripstone_block", "sandstone", "red_sandstone", "terracotta", "snow_block",
+            "dripstone_block", "sandstone", "red_sandstone", "terracotta", "snow_block",
             "powder_snow", "ice", "packed_ice", "blue_ice", "netherrack", "soul_sand", "soul_soil", "end_stone",
             "basalt", "blackstone", "moss_block", "bedrock", "water", "lava");
 
