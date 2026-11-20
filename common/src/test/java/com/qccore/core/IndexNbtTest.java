@@ -61,6 +61,30 @@ class IndexNbtTest {
     }
 
     @Test
+    void scannedKindAndDoorsSurviveAndOldRecordsReadAsBuildings() {
+        QcUnitIndex index = new QcUnitIndex();
+        BlockPos road = new BlockPos(0, 64, 8);
+        BlockPos house = new BlockPos(0, 64, 0);
+        index.put(OVERWORLD, road, new QcUnitRecord(road, 0, 0, QcUnitRecord.ROAD, 0));
+        index.put(OVERWORLD, house, new QcUnitRecord(house, 0b0010, 0, QcUnitRecord.BUILDING, 0b0100));
+
+        CompoundTag saved = index.save(new CompoundTag());
+        QcUnitIndex read = QcUnitIndex.read(saved);
+        assertEquals(QcUnitRecord.ROAD, read.units(OVERWORLD).get(road).kind());
+        assertFalse(read.units(OVERWORLD).get(road).isBuilding());
+        assertEquals(0b0100, read.units(OVERWORLD).get(house).doors());
+
+        // A record written before kind/doors existed has neither key and reads as a door-less building.
+        CompoundTag old = recordTag(new int[]{8, 64, 0}, 1, 0);
+        assertFalse(old.contains("k") || old.contains("d"));
+        QcUnitRecord legacy = QcUnitIndex.read(nbtWith(dimensionsWith(OVERWORLD, old))).units(OVERWORLD)
+                .get(new BlockPos(8, 64, 0));
+        assertTrue(legacy.isBuilding());
+        assertEquals(0, legacy.doors());
+        assertFalse(record(8, 64, 0, 1, 0).toNbt().contains("k"));
+    }
+
+    @Test
     void emptyAndMissingStateReadsEmpty() {
         assertEquals(0, QcUnitIndex.read(new CompoundTag()).totalUnits());
         assertEquals(0, QcUnitIndex.read(null).totalUnits());
@@ -117,5 +141,11 @@ class IndexNbtTest {
         record.putByte("w", (byte) walls);
         record.putByte("g", (byte) gates);
         return record;
+    }
+
+    private static CompoundTag dimensionsWith(ResourceLocation dimension, CompoundTag record) {
+        CompoundTag dimensions = new CompoundTag();
+        dimensions.put(dimension.toString(), dimensionTag(record));
+        return dimensions;
     }
 }

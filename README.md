@@ -68,6 +68,11 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
    written as air.
 7. **M** toggles the ghost-block preview, **O** the wireframes, **I** opens the lattice, layout import
    and the legacy QCSimple palette, **U** re-aligns a placed building.
+8. **/qc scan [radius]** (default 32, up to 64) finds QC buildings that already stand round you, built by
+   hand, by worldedit's qckit or before the mod was installed, and adds them to the mod's unit memory: the
+   grid they sit on, every unit whose twelve framework edges are built, wall/gate/open between neighbours,
+   doors on the ground floor and the road cells in front (a laid 7x7 floor, never plain terrain). Units the
+   mod built itself keep their record. It only reads the world; `/qc forget` drops what it added.
 
 **Street decor** (qckit's `decor.py`): add a decor style in the block chooser (**+ decor**) and choose its
 roles (pot, planter, flower, seat, goods, logs, bush, post, lamp, awning, trunk, crown, basin; `a,b,c` picks one
