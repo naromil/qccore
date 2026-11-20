@@ -33,7 +33,7 @@ the original QCSimple-port spec, is no longer in the repo.)
   the IO/config screens (`QcConfigScreen` = lattice + layouts + legacy palette, `QcFileBrowserScreen`, `QcSaveScreen`,
   `QcAlignScreen`) plus the planning screens (`QcToolsScreen` hub on B with the Building panel, `QcDesignScreen`
   template/roof/facades/piers/partition/doors/lights of the active building, `QcBlockChooserScreen` styles x roles with
-  kits, batch presets (`core/qc/Presets`) and a live 3D sample of the style, `QcBlockPickerScreen` searchable block grid, `QcTemplateScreen` with a
+  kits, batch presets (`core/qc/Presets`) and a live 3D sample of the style (hovering a role row lights that role's blocks), `QcBlockPickerScreen` searchable block grid, `QcTemplateScreen` with a
   3D preview in default blocks; both previews are `QcSceneView`). All of them and `QcHud` share the flat
   dark look of `client/QcUi` (panels, `Chip` buttons with a live selected state, `Stepper` number widgets,
   status pill, tool colours/icons); the tools screen lays out all choices at once and must fit a 427x240 GUI.

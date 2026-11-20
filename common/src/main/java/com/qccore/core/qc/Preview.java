@@ -3,8 +3,11 @@ package com.qccore.core.qc;
 import com.qccore.core.plan.BuildingSpec;
 import com.qccore.core.plan.Cell;
 import com.qccore.core.plan.QcPlan;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import net.minecraft.core.BlockPos;
 
 /**
  * What the screens draw as small previews: a sample of one style (the block chooser, as the
@@ -22,6 +25,9 @@ public final class Preview {
     public static final String STYLE = "preview";
     /** The style name of a sample's road. */
     public static final String ROAD_STYLE = "preview_road";
+
+    /** Put before a role's block id to find where the generator writes it ({@link #roleBlocks}). */
+    static final String MARK = "qcmark_";
 
     private static final Map<String, String> BUILDING = new LinkedHashMap<>();
     private static final Map<String, String> ROAD = new LinkedHashMap<>();
@@ -132,5 +138,84 @@ public final class Preview {
             plan.roads().put(new Cell(x, 1, 1), ROAD_STYLE);
         }
         return plan;
+    }
+
+    /** The style name a {@link #sample} of a style of {@code kind} gives that style. */
+    public static String sampleStyle(String kind) {
+        return Roles.ROAD.equals(kind) ? ROAD_STYLE : STYLE;
+    }
+
+    /**
+     * Where {@code role} of style {@code styleName} puts blocks in {@code normal} (the result of
+     * {@code District.build(plan)}): every block that would change if the player changed that role,
+     * including roles that repeat it because they are unset. Empty when the role has no block.
+     *
+     * <p>The plan is built a second time with the role's block id marked; marked blocks are the
+     * role's. Where the generator treats a block by its exact id (a vanilla lantern as a light) the
+     * marked build can lay out differently; then the blocks of the role's id are taken instead.
+     */
+    public static Set<BlockPos> roleBlocks(QcPlan plan, District.Result normal, String styleName, String role) {
+        BlockChoice style = plan.styles().get(styleName);
+        String id = style == null ? null : style.resolve(role);
+        if (id == null || id.isBlank()) {
+            return Set.of();
+        }
+        QcPlan marked = plan.copy();
+        marked.styles().get(styleName).set(role, mark(id, role.endsWith("_mix")));
+        Map<BlockPos, String> blocks;
+        try {
+            blocks = District.build(marked).blocks();
+        } catch (RuntimeException e) {
+            blocks = null;
+        }
+        Set<BlockPos> out = new HashSet<>();
+        if (blocks != null && blocks.keySet().equals(normal.blocks().keySet())) {
+            blocks.forEach((pos, block) -> {
+                if (block.startsWith(MARK)) {
+                    out.add(pos);
+                }
+            });
+            return out;
+        }
+        Set<String> bases = new HashSet<>();
+        for (String part : ids(id, role.endsWith("_mix"))) {
+            bases.add(BlockStr.base(part));
+        }
+        normal.blocks().forEach((pos, block) -> {
+            if (bases.contains(BlockStr.base(block))) {
+                out.add(pos);
+            }
+        });
+        return out;
+    }
+
+    /** The ids in a role's value: one id, or each id of an {@code id=share,...} mix. */
+    private static Set<String> ids(String value, boolean mix) {
+        Set<String> out = new HashSet<>();
+        if (!mix) {
+            out.add(value);
+            return out;
+        }
+        for (String part : value.split(",")) {
+            int eq = part.lastIndexOf('=');
+            if (eq > 0) {
+                out.add(part.substring(0, eq).trim());
+            }
+        }
+        return out;
+    }
+
+    private static String mark(String value, boolean mix) {
+        if (!mix) {
+            return MARK + value;
+        }
+        StringBuilder out = new StringBuilder();
+        for (String part : value.split(",")) {
+            if (out.length() > 0) {
+                out.append(',');
+            }
+            out.append(MARK).append(part.trim());
+        }
+        return out.toString();
     }
 }

@@ -35,7 +35,9 @@ import net.minecraft.world.item.ItemStack;
  * <p>A live 3D sample of the selected building or road style shows how the chosen blocks sit
  * together (a two-storey building of the style's template with a default road in front, or a road
  * crossing); unset roles are left out of it. On a wide screen it stands beside the roles, on a
- * narrow one the "3D" chip swaps it in for the role list. Drag it to turn it.
+ * narrow one the "3D" chip swaps it in for the role list. Drag it to turn it. Hovering a role's row
+ * (wide screens, where both show) dims the sample and draws that role's blocks on top
+ * ({@link Preview#roleBlocks}), with their count under it.
  *
  * <p>Kits save the selected style as a file and load a file into it. The kit cycler also offers the
  * {@link Presets} of the selected style's kind (the QC Shorts batches' blocks) before the saved kits;
@@ -453,11 +455,16 @@ public class QcBlockChooserScreen extends Screen {
 					QcUi.panel(g, this.font, x, this.top, w, h, "Preview", QcUi.ACCENT);
 				}
 				refreshView();
+				String hovered = this.side ? hoveredRole(mouseX, mouseY) : null;
+				this.view.highlight(Preview.sampleStyle(this.work.kind()), hovered);
 				int viewTop = this.top + body;
 				int viewH = h - body - 14;
 				this.view.render(g, x + 3, viewTop, w - 6, viewH);
 				this.viewRect = new int[] {x + 3, viewTop, w - 6, viewH};
+				int lit = this.view.highlighted();
 				String note = !this.view.status().isEmpty() ? this.view.status()
+						: lit > 0 ? hovered + ": " + lit + " blocks"
+						: lit == 0 ? hovered + ": not in this sample"
 						: this.view.unset() > 0 ? this.view.unset() + " unset roles not drawn · drag to turn" : "drag to turn";
 				g.drawString(this.font, this.font.plainSubstrByWidth(note, w - 8), x + 4, this.top + h - 11, QcUi.MUTED, false);
 			} else {
@@ -483,6 +490,20 @@ public class QcBlockChooserScreen extends Screen {
 			QcUi.status(g, this.font, this.footer, this.footerError ? QcUi.ERROR : QcUi.OK, this.width / 2, this.height - 36);
 		}
 		super.render(g, mouseX, mouseY, delta);
+	}
+
+	/** The role whose row (name, field and buttons) is under the mouse, or {@code null}. */
+	private String hoveredRole(int mouseX, int mouseY) {
+		if (mouseX < this.right || mouseX >= this.right + this.rightW) {
+			return null;
+		}
+		for (Map.Entry<String, EditBox> entry : this.fields.entrySet()) {
+			int rowY = entry.getValue().getY() - 1;
+			if (mouseY >= rowY && mouseY < rowY + ROW) {
+				return entry.getKey();
+			}
+		}
+		return null;
 	}
 
 	/** Whether the selected style has a 3D sample (building and road styles do, decor ones do not). */

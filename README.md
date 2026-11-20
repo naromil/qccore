@@ -17,7 +17,8 @@ workshop, library, loft, qc_raw - with its own roof, facades, piers, partition, 
 from a **style**, the blocks chosen role by role (frame, beam, floor, wall, glass, row, roof, ...) in the
 **block chooser**. Nothing is ever filled in for you: a role nobody chose stops the apply and is listed by name.
 The block chooser shows a live 3D sample of the selected building or road style (beside the roles on a wide
-screen, behind the **3D** chip on a narrow one; drag to turn it), built from exactly the blocks you chose.
+screen, behind the **3D** chip on a narrow one; drag to turn it), built from exactly the blocks you chose. On a wide screen,
+hover over a role's row to light up where that role's blocks sit (the rest dims, and the count shows under it).
 The design screen, when there is room, previews the design as a small building in your style's blocks, with
 default blocks only in the picture where a role is still unset.
 QCSimple's nine components (column, row, inner column...) are outdated rules and only survive as the
