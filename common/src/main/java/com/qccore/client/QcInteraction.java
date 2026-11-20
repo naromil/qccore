@@ -149,8 +149,10 @@ public final class QcInteraction {
 		HitResult target = client.hitResult;
 		Direction face = null;
 		BlockPos reference;
-		boolean blockHit = target instanceof BlockHitResult;
-		if (target instanceof BlockHitResult hit) {
+		// a miss is a BlockHitResult too (type MISS, its "face" the look direction): only a real hit has a face
+		boolean blockHit = target.getType() == HitResult.Type.BLOCK && target instanceof BlockHitResult;
+		if (blockHit) {
+			BlockHitResult hit = (BlockHitResult) target;
 			reference = hit.getBlockPos();
 			face = hit.getDirection();
 		} else {

@@ -44,6 +44,12 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
    | floor / ring | 2 corners (filled rectangle / its outline) |
    | box / hollow box | 2 corners, then aim up or down for the height |
 
+   The shape under the crosshair is outlined in the tool's colour as what the tool would make: a unit's
+   framework (corner posts and beams) for building, template, assign and erase, the shared sides (with a
+   doorway for gates) for partitions, the 7-wide floor for a road, the emptied volume for a clear. The
+   white box marks the aimed cell only where the preview lands elsewhere (beside the aimed face, a
+   template, the height point of a box).
+
    **LMB** cancels a shape in progress, otherwise erases the aimed cell. **Shift/Ctrl + RMB/LMB** set or
    clear a single wall/gate on the aimed face, as before.
 3. **Buildings and blocks** (tools screen, Building panel): **‹ ›** picks the active building, **New** makes

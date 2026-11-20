@@ -19,6 +19,7 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Draws the plan in the world: ghost blocks of what it would place ({@link QcBlockPreview}), the
@@ -63,6 +64,10 @@ public final class QcOverlayRenderer {
 	private static final int CELL_LIMIT = 2048;
 	/** Outward offset of a wall plate from the shared unit face. */
 	private static final double PLATE_OFFSET = 0.02;
+	/** How far the beams of a preview frame sit inside their block, so shared edges stay apart. */
+	private static final double FRAME_INSET = 0.06;
+	/** Above this many preview cells the frames are simplified to one box per cell. */
+	private static final int FRAME_LIMIT = 256;
 	/** Edge length of the anchor and reported-unit markers. */
 	private static final double MARKER_SIZE = 0.15;
 
@@ -92,8 +97,9 @@ public final class QcOverlayRenderer {
 			drawCells(matrices, vertices, cameraPos, cursor);
 			drawWalls(matrices, vertices);
 			drawPlanExtras(matrices, vertices, cameraPos);
-			drawShape(client, matrices, vertices);
-			drawCursor(matrices, vertices, cursor);
+			Set<Cell> preview = QcInteraction.previewCells(client);
+			drawShape(client, matrices, vertices, preview);
+			drawCursor(matrices, vertices, cursor, preview);
 			drawMarkers(matrices, vertices);
 			consumers.endBatch(RenderType.lines());
 		} finally {
@@ -204,18 +210,43 @@ public final class QcOverlayRenderer {
 		}
 	}
 
-	/** The cells the shape in progress (or the template under the crosshair) covers, plus the mirror planes. */
-	private static void drawShape(Minecraft client, PoseStack matrices, VertexConsumer vertices) {
+	/**
+	 * The cells the shape in progress (or the template under the crosshair) covers, drawn as what the
+	 * tool would make of them, plus the mirror planes. Units (building, template, assign, erase) show
+	 * the unit's framework: four posts and eight beams, each one block thick over the full 9-block
+	 * unit; partition tools show the shared sides they would set; a road shows its 7-wide floor; a
+	 * clear shows the volume it empties. Cells below layer 1 are skipped, since every tool refuses them.
+	 */
+	private static void drawShape(Minecraft client, PoseStack matrices, VertexConsumer vertices, Set<Cell> preview) {
 		QcTool tool = QcClientState.tool;
+		boolean frames = preview.size() <= FRAME_LIMIT;
 		int drawn = 0;
-		for (Cell cell : QcInteraction.previewCells(client)) {
+		for (Cell cell : preview) {
+			if (cell.layer() < 1) {
+				continue;
+			}
 			if (drawn++ >= CELL_LIMIT) {
 				break;
 			}
 			BlockPos origin = QcInteraction.cellOrigin(cell.pos(), cell.layer());
-			LevelRenderer.renderLineBox(matrices, vertices, origin.getX() + 0.1, origin.getY() + 0.1, origin.getZ() + 0.1,
-					origin.getX() + 8.9, origin.getY() + 8.9, origin.getZ() + 8.9,
-					tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
+			switch (tool) {
+				case WALLS, GATES, OPEN -> drawPartitionPreview(matrices, vertices, cell, origin, preview, tool);
+				case ROAD -> LevelRenderer.renderLineBox(matrices, vertices,
+						origin.getX() + 1.0, origin.getY() + FRAME_INSET, origin.getZ() + 1.0,
+						origin.getX() + 8.0, origin.getY() + 1.0 - FRAME_INSET, origin.getZ() + 8.0,
+						tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
+				case CLEAR -> LevelRenderer.renderLineBox(matrices, vertices,
+						origin.getX() + 1.0, origin.getY() + 1.0, origin.getZ() + 1.0,
+						origin.getX() + 8.0, origin.getY() + 8.0, origin.getZ() + 8.0,
+						tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
+				default -> {
+					if (frames) {
+						drawFrame(matrices, vertices, origin, tool.red, tool.green, tool.blue);
+					} else {
+						drawBox(matrices, vertices, origin, 9.0, tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
+					}
+				}
+			}
 		}
 		Modifiers modifiers = QcClientState.modifiers;
 		BlockPos anchor = QcClientState.anchor;
@@ -238,12 +269,80 @@ public final class QcOverlayRenderer {
 		}
 	}
 
+	/**
+	 * A unit's framework: the four corner posts (9 tall) and the eight beams between them along the
+	 * bottom and top edges, each a one-block bar drawn slightly inside its blocks.
+	 */
+	private static void drawFrame(PoseStack matrices, VertexConsumer vertices, BlockPos origin,
+			float red, float green, float blue) {
+		double x = origin.getX();
+		double y = origin.getY();
+		double z = origin.getZ();
+		double e = FRAME_INSET;
+		for (int px = 0; px <= 8; px += 8) {
+			for (int pz = 0; pz <= 8; pz += 8) {
+				LevelRenderer.renderLineBox(matrices, vertices, x + px + e, y + e, z + pz + e,
+						x + px + 1 - e, y + 9 - e, z + pz + 1 - e, red, green, blue, LAYER_OPAQUE_ALPHA);
+			}
+		}
+		for (int py = 0; py <= 8; py += 8) {
+			for (int edge = 0; edge <= 8; edge += 8) {
+				LevelRenderer.renderLineBox(matrices, vertices, x + 1, y + py + e, z + edge + e,
+						x + 8, y + py + 1 - e, z + edge + 1 - e, red, green, blue, LAYER_OPAQUE_ALPHA);
+				LevelRenderer.renderLineBox(matrices, vertices, x + edge + e, y + py + e, z + 1,
+						x + edge + 1 - e, y + py + 1 - e, z + 8, red, green, blue, LAYER_OPAQUE_ALPHA);
+			}
+		}
+	}
+
+	/**
+	 * A partition tool's preview of one cell: a plate on each east or south side it shares with
+	 * another preview cell of its layer (so every shared side is drawn once), with a doorway in it
+	 * for gates; a cell that shares no side shows only its floor outline.
+	 */
+	private static void drawPartitionPreview(PoseStack matrices, VertexConsumer vertices, Cell cell, BlockPos origin,
+			Set<Cell> preview, QcTool tool) {
+		boolean east = preview.contains(new Cell(cell.x() + 1, cell.layer(), cell.z()));
+		boolean south = preview.contains(new Cell(cell.x(), cell.layer(), cell.z() + 1));
+		boolean west = preview.contains(new Cell(cell.x() - 1, cell.layer(), cell.z()));
+		boolean north = preview.contains(new Cell(cell.x(), cell.layer(), cell.z() - 1));
+		double x = origin.getX();
+		double y = origin.getY();
+		double z = origin.getZ();
+		if (!(east || south || west || north)) {
+			LevelRenderer.renderLineBox(matrices, vertices, x + 1, y + 1, z + 1, x + 8, y + 1, z + 8,
+					tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
+			return;
+		}
+		if (east) {
+			LevelRenderer.renderLineBox(matrices, vertices, x + 8 + FRAME_INSET, y + 1, z + 1,
+					x + 9 - FRAME_INSET, y + 8, z + 8, tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
+			if (tool == QcTool.GATES) {
+				LevelRenderer.renderLineBox(matrices, vertices, x + 8.5, y + 1, z + 3, x + 8.5, y + 4, z + 6,
+						tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
+			}
+		}
+		if (south) {
+			LevelRenderer.renderLineBox(matrices, vertices, x + 1, y + 1, z + 8 + FRAME_INSET,
+					x + 8, y + 8, z + 9 - FRAME_INSET, tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
+			if (tool == QcTool.GATES) {
+				LevelRenderer.renderLineBox(matrices, vertices, x + 3, y + 1, z + 8.5, x + 6, y + 4, z + 8.5,
+						tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
+			}
+		}
+	}
+
 	private static boolean far(Vec3 camera, BlockPos origin) {
 		return camera.distanceToSqr(origin.getX() + 4.0, origin.getY() + 4.0, origin.getZ() + 4.0) > VIEW_RANGE * VIEW_RANGE;
 	}
 
-	private static void drawCursor(PoseStack matrices, VertexConsumer vertices, Cursor cursor) {
-		if (cursor == null || cursor.layer() < 1) {
+	/**
+	 * The white cursor cell. It is left out while the preview already draws that very cell, so the
+	 * two outlines never sit on top of each other; it shows where the preview lands elsewhere (a
+	 * face-offset placement, a template, the height point of a box).
+	 */
+	private static void drawCursor(PoseStack matrices, VertexConsumer vertices, Cursor cursor, Set<Cell> preview) {
+		if (cursor == null || cursor.layer() < 1 || preview.contains(Cell.of(cursor.cell(), cursor.layer()))) {
 			return;
 		}
 		drawBox(matrices, vertices, QcInteraction.cellOrigin(cursor.cell(), cursor.layer()), 8.0,
