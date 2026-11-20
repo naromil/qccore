@@ -3,6 +3,7 @@ package com.qccore.client;
 import com.qccore.client.QcUi.Chip;
 import com.qccore.core.plan.BlockIds;
 import com.qccore.core.qc.BlockChoice;
+import com.qccore.core.qc.Presets;
 import com.qccore.core.plan.BuildingSpec;
 import com.qccore.core.qc.Preview;
 import com.qccore.core.qc.Role;
@@ -36,8 +37,10 @@ import net.minecraft.world.item.ItemStack;
  * crossing); unset roles are left out of it. On a wide screen it stands beside the roles, on a
  * narrow one the "3D" chip swaps it in for the role list. Drag it to turn it.
  *
- * <p>Kits save the selected style as a file and load a file into it. Every change is one undoable
- * plan edit.
+ * <p>Kits save the selected style as a file and load a file into it. The kit cycler also offers the
+ * {@link Presets} of the selected style's kind (the QC Shorts batches' blocks) before the saved kits;
+ * loading one copies its blocks into the style, where every role stays the player's to change. Every
+ * change is one undoable plan edit.
  */
 public class QcBlockChooserScreen extends Screen {
 	private static final int ROW = 15;
@@ -148,13 +151,20 @@ public class QcBlockChooserScreen extends Screen {
 		// 2. Kits
 		int kitTop = newTop + 46;
 		y = kitTop + body;
-		List<String> kits = QcKits.list();
+		List<KitEntry> kits = kitEntries();
 		this.kit = kits.isEmpty() ? 0 : Math.floorMod(this.kit, kits.size());
 		this.addRenderableWidget(new Chip(this.left + 4, y, LEFT_W - 8 - 40, CHIP_H, "", () -> {
 			this.kit++;
+			if (!kits.isEmpty()) {
+				KitEntry next = kits.get(Math.floorMod(this.kit, kits.size()));
+				this.footer = next.preset()
+						? "preset " + next.label() + " (" + Presets.get(next.name()).source() + "): Load copies it into the style"
+						: "kit " + next.name();
+				this.footerError = false;
+			}
 			rebuild();
-		}).label(() -> kits.isEmpty() ? "no kits saved" : "kit: " + kits.get(Math.floorMod(this.kit, kits.size())) + " ›")
-				.tip("Next kit in qccore/kits"));
+		}).label(() -> kits.isEmpty() ? "no kits saved" : kits.get(Math.floorMod(this.kit, kits.size())).label() + " ›")
+				.tip("Next kit: the QC Shorts presets of this kind of style, then your kits in qccore/kits"));
 		this.addRenderableWidget(new Chip(this.left + LEFT_W - 42, y, 38, CHIP_H, "Load", () -> loadKit(kits))
 				.tip("Load the kit's blocks into the selected style"));
 		y += ROW;
@@ -356,13 +366,35 @@ public class QcBlockChooserScreen extends Screen {
 		rebuild();
 	}
 
-	private void loadKit(List<String> kits) {
+	/** A kit the cycler offers: a batch preset of the selected style's kind, or a saved kit file. */
+	private record KitEntry(String name, boolean preset) {
+		String label() {
+			return this.preset ? this.name.replace('_', ' ') : "kit: " + this.name;
+		}
+	}
+
+	/** The presets of the selected style's kind first, then the player's saved kits. */
+	private List<KitEntry> kitEntries() {
+		List<KitEntry> entries = new ArrayList<>();
+		if (this.work != null) {
+			for (String name : Presets.names(this.work.kind())) {
+				entries.add(new KitEntry(name, true));
+			}
+		}
+		for (String name : QcKits.list()) {
+			entries.add(new KitEntry(name, false));
+		}
+		return entries;
+	}
+
+	private void loadKit(List<KitEntry> kits) {
 		if (kits.isEmpty() || this.work == null) {
 			return;
 		}
-		String name = kits.get(Math.floorMod(this.kit, kits.size()));
+		KitEntry entry = kits.get(Math.floorMod(this.kit, kits.size()));
+		String name = entry.name();
 		try {
-			BlockChoice loaded = QcKits.load(name);
+			BlockChoice loaded = entry.preset() ? Presets.get(name).choice() : QcKits.load(name);
 			if (!loaded.kind().equals(this.work.kind())) {
 				this.footer = "kit " + name + " is a " + loaded.kind() + " kit; the style is a " + this.work.kind() + " style";
 				this.footerError = true;
@@ -371,7 +403,7 @@ public class QcBlockChooserScreen extends Screen {
 			this.work = loaded;
 			this.fields.clear();
 			commit();
-			this.footer = "loaded kit " + name + " into " + this.style;
+			this.footer = "loaded " + entry.label() + " into " + this.style + (entry.preset() ? "; every role stays yours to change" : "");
 			this.footerError = false;
 			rebuild();
 		} catch (RuntimeException e) {

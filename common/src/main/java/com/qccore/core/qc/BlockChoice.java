@@ -8,9 +8,9 @@ import net.minecraft.nbt.CompoundTag;
 
 /**
  * A style: the blocks chosen for one kind of generator, role by role ({@code frame ->
- * minecraft:spruce_log}). qckit's "blocks chosen for this build": there are no presets and no
- * default blocks, an unset role either repeats another chosen role ({@link Role#fallback()}) or, if
- * optional, leaves its part out. A template is saved with every style's blocks stripped
+ * minecraft:spruce_log}). qckit's "blocks chosen for this build": no default block stands in for
+ * a role (a {@link Presets} entry is copied in only when the player loads it); an unset role either
+ * repeats another chosen role ({@link Role#fallback()}) or, if optional, leaves its part out. A template is saved with every style's blocks stripped
  * ({@link #stripped()}), so the same geometry can be filled with any blocks later.
  *
  * <p>Ids may carry states ({@code oak_log[axis=x]}); the namespace defaults to {@code minecraft}.
