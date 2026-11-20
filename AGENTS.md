@@ -12,7 +12,10 @@ re-align whole buildings to `(8x+a, 8y+b, 8z+c)`.
 `facades.py`, `styles.py`, `road.py`, `plan.py`); `core/qc` is a port of them. QCSimple's nine-component model
 (column, row, inner column, ...) is outdated and survives only as the **legacy** `qcsimple` template, so old plans,
 layouts and the golden parity tests keep working. When the rules change, port the change from qckit; do not invent
-rules here and do not add preset blocks or kits (the user's rule: "no default blocks"). Players use qckit's templates
+rules here, and never let a default block decide anything for the player (the user's rule and its reason: "I want
+user to always have freedom over their block choice so they have the fun of customizing. it's okay as long as this
+goal is not hindered"; defaults may appear in previews and as presets the player starts from and edits, never as a
+stand-in for a role left unset). Players use qckit's templates
 or save their own: a saved template is geometry only, its block choices stripped, and is filled in with the block
 chooser when it is applied.
 
@@ -30,7 +33,8 @@ the original QCSimple-port spec, is no longer in the repo.)
   the IO/config screens (`QcConfigScreen` = lattice + layouts + legacy palette, `QcFileBrowserScreen`, `QcSaveScreen`,
   `QcAlignScreen`) plus the planning screens (`QcToolsScreen` hub on B with the Building panel, `QcDesignScreen`
   template/roof/facades/piers/partition/doors/lights of the active building, `QcBlockChooserScreen` styles x roles with
-  kits, `QcBlockPickerScreen` searchable block grid, `QcTemplateScreen`). All of them and `QcHud` share the flat
+  kits and a live 3D sample of the style, `QcBlockPickerScreen` searchable block grid, `QcTemplateScreen` with a
+  3D preview in default blocks; both previews are `QcSceneView`). All of them and `QcHud` share the flat
   dark look of `client/QcUi` (panels, `Chip` buttons with a live selected state, `Stepper` number widgets,
   status pill, tool colours/icons); the tools screen lays out all choices at once and must fit a 427x240 GUI.
 - **Plan model (`core/plan/`):** `QcPlan` = units (`UnitLayers`, flags = partition overrides: wall = party wall,
@@ -52,7 +56,8 @@ the original QCSimple-port spec, is no longer in the repo.)
   lights, rows, piers dense/2x2/thick, plinth, roofs, crown), `Facades` (the flat masks and the 14 depth pieces of
   facades.py, relief kept or dropped whole), `Roofs` (hip, gable, gambrel, mansard, flat, garden, none), `Templates`
   (the 16 qckit templates as option maps, plus `qcsimple`), `Design` (template + overrides, validated), `Roles`
-  (building and road role sets, optionality, fallbacks), `BlockChoice` (a style), `StyleReader` (records reached and
+  (building and road role sets, optionality, fallbacks), `BlockChoice` (a style), `Preview` (default
+  blocks for the 3D previews only, and the block chooser's sample plans), `StyleReader` (records reached and
   missing roles), `BlockStr` (blocks.py: stair/slab/door/cornice states, `oriented`, the connection pass),
   `District` (plan.py's build: generation, road layout round doors and thick columns, the outward-decoration
   merge, checks), `Decor` (decor.py: street props per building character on frontages, street edges, yards and
@@ -321,8 +326,12 @@ dumps of a failing golden test). Loom's wiring adds `acceptGameTestEula`/`delete
 - **qckit is the source of truth for the generator.** `core/qc` mirrors qckit function by function (method names
   and order follow `building.py`/`facades.py`/`plan.py`); keep it a faithful port and port qckit changes rather
   than diverging. Plan-local storeys are absolute layers: qckit's `s == 0` is `s == groundLayer`.
-- **No default blocks, anywhere.** A role resolves to its own block, else its fallback role, else nothing; required
-  roles that a design reaches unset are a refusal that names them. Never add preset styles, kits or a stand-in block.
+- **No default block ever stands in for the player's choice.** A role resolves to its own block, else its fallback
+  role, else nothing; required roles that a design reaches unset are a refusal that names them. The reason is the
+  player's freedom over every block (user, 2026-11-19: "it's okay as long as this goal is not hindered"), so default
+  blocks are allowed only where they cannot take that away: `core/qc/Preview` (the template screen's 3D preview,
+  never written into a plan) and presets the player picks and can change role by role. Never fill a plan's unset
+  role silently.
 - **Templates carry no blocks.** `QcTemplates.save` writes `plan.stripped().normalized()`; stamping merges styles
   with `putIfAbsent`, so blocks the player already chose for a style name win over a template's empty slot.
 - **Partition flags are tri-state overrides**: wall = party wall, wall+gate = gate, gate alone = open, none = the
