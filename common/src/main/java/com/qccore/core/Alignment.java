@@ -22,6 +22,16 @@ public final class Alignment {
         return value + nearestDelta(value, residue);
     }
 
+    /**
+     * The layer whose floor plane (local y 0) lies nearest a block at {@code blockY}: the block's own
+     * layer when it sits at local y 0..4, the layer above at 5..7 (a tie at 4 goes to the lower
+     * layer). The lattice itself never moves; this only picks which of its layers to use.
+     */
+    public static int nearestLayer(int blockY, int anchorY) {
+        int base = Math.floorDiv(blockY - anchorY, 8);
+        return Math.floorMod(blockY - anchorY, 8) <= 4 ? base : base + 1;
+    }
+
     /** The residue triple of a position. */
     public static BlockPos residues(BlockPos p) {
         return new BlockPos(Math.floorMod(p.getX(), 8), Math.floorMod(p.getY(), 8), Math.floorMod(p.getZ(), 8));

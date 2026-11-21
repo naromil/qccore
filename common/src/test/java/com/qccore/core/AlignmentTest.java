@@ -32,6 +32,22 @@ class AlignmentTest {
     }
 
     @Test
+    void nearestLayerPicksTheClosestFloorPlaneAndTiesGoLower() {
+        int anchorY = 64;
+        // layer 0 spans y 64..71: local y 0..4 stays on layer 0, 5..7 goes to layer 1
+        assertEquals(0, Alignment.nearestLayer(64, anchorY));     // d = 0
+        assertEquals(0, Alignment.nearestLayer(68, anchorY));     // d = 4, tie -> lower
+        assertEquals(1, Alignment.nearestLayer(69, anchorY));     // d = 5
+        assertEquals(1, Alignment.nearestLayer(71, anchorY));     // d = 7
+        assertEquals(1, Alignment.nearestLayer(72, anchorY));     // d = 0 of layer 1
+        // below the anchor (negative layers) and an anchor off the 8-grid
+        assertEquals(-1, Alignment.nearestLayer(56, anchorY));    // d = 0 of layer -1
+        assertEquals(0, Alignment.nearestLayer(61, anchorY));     // d = 5 of layer -1
+        assertEquals(2, Alignment.nearestLayer(23, 3));           // 23 - 3 = 20: layer 2, d = 4
+        assertEquals(3, Alignment.nearestLayer(24, 3));           // d = 5
+    }
+
+    @Test
     void snapMovesToTheNearestLatticeValue() {
         assertEquals(16, Alignment.snap(13, 0));
         assertEquals(13, Alignment.snap(13, 5));

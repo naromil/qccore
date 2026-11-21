@@ -56,8 +56,13 @@ public final class QcInteraction {
 	/** Whether the use key was held at the end of the previous tick (multi-point shapes need a fresh press). */
 	private static boolean useHeldLastTick;
 
-	/** Where the crosshair points, in session unit coordinates. */
-	public record Cursor(UnitPos cell, int layer, @Nullable Direction face, boolean blockHit) {
+	/**
+	 * Where the crosshair points, in session unit coordinates. {@code layer} is the layer the editor
+	 * works on: for a placing tool aimed at a block's top face, the layer whose floor plane is nearest
+	 * that block ({@link Alignment#nearestLayer}), otherwise the aimed block's own layer, which is
+	 * always {@code hitLayer}.
+	 */
+	public record Cursor(UnitPos cell, int layer, int hitLayer, @Nullable Direction face, boolean blockHit) {
 	}
 
 	private QcInteraction() {
@@ -162,13 +167,19 @@ public final class QcInteraction {
 		BlockPos anchor = QcClientState.anchor;
 		UnitPos cell = new UnitPos(Math.floorDiv(reference.getX() - anchor.getX(), 8),
 				Math.floorDiv(reference.getZ() - anchor.getZ(), 8));
-		return new Cursor(cell, Math.floorDiv(reference.getY() - anchor.getY(), 8), face, blockHit);
+		int hitLayer = Math.floorDiv(reference.getY() - anchor.getY(), 8);
+		// ground or a roof aimed from above: place on the nearest floor plane, so ground at local y 5..7
+		// takes the layer above instead of refusing (layer 0) or burying the unit
+		int layer = blockHit && face == Direction.UP && isPlacingTool(QcClientState.tool)
+				? Alignment.nearestLayer(reference.getY(), anchor.getY())
+				: hitLayer;
+		return new Cursor(cell, layer, hitLayer, face, blockHit);
 	}
 
 	/**
 	 * The cell the next shape point lands in: for a placing tool the hit block offset by the hit
 	 * face (so aiming at a unit's side places next to it), otherwise the aimed cell; the layer is
-	 * always the aimed block's. The third point of a box picks its height along the vertical line
+	 * the cursor's (the nearest floor plane for a placing tool on a top face). The third point of a box picks its height along the vertical line
 	 * of the second point, wherever the crosshair ray passes closest to it.
 	 */
 	@Nullable
@@ -710,10 +721,11 @@ public final class QcInteraction {
 	private static QcUnitRecord crosshairUnit(Minecraft client) {
 		Cursor cursor = cursor(client);
 		BlockPos anchor = QcClientState.anchor;
-		if (cursor == null || anchor == null || cursor.layer() < 1) {
+		if (cursor == null || anchor == null || cursor.hitLayer() < 1) {
 			return null;
 		}
-		BlockPos origin = anchor.offset(cursor.cell().x() * 8, cursor.layer() * 8, cursor.cell().z() * 8);
+		// the unit actually hit, not the layer a placing tool would build on
+		BlockPos origin = anchor.offset(cursor.cell().x() * 8, cursor.hitLayer() * 8, cursor.cell().z() * 8);
 		for (QcUnitRecord record : QcClientState.nearbyUnits.values()) {
 			if (record.isBuilding() && record.origin().equals(origin)) {
 				return record;

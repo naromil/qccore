@@ -69,7 +69,10 @@ the original QCSimple-port spec, is no longer in the repo.)
   axis, so neighbours *share* the boundary plane (local `0` of one unit is local `8` of the next); unit origins
   satisfy `x = 8*dx + anchorX` (same for `y`, `z`) and unit-local `(x, y, z)` lands at `absX = dx*8 + x`,
   `absY = dy*8 + y`, `absZ = dz*8 + z`. **Layers start at 1**: layer `dy` is the row based at `anchor + 8*dy`, and
-  layer 1 is the player's own cell when the editor is entered.
+  layer 1 is the player's own cell when the editor is entered. A placing tool (units, template) aimed at a block's
+  **top face** works on the layer whose floor plane is nearest that block (`Alignment.nearestLayer`: local y 0..4 →
+  that layer, 5..7 → the one above; user's rule, review #14); side faces and misses use the aimed block's layer, and
+  the lattice itself never moves for terrain. `Cursor.hitLayer` keeps the aimed block's layer for the align key.
 - **Legacy nine components** (QCSimple, `qcsimple` template only) in `core/palette/`, fixed order `frameworkBlock, rowBlock, columnBlock, wallBlock,
   floorBlock` (block ids, seeded by `Defaults.applyTo` with `polished_deepslate`, `chiseled_deepslate`, `spruce_log`,
   `deepslate_tiles`, `spruce_planks`) then `innerWall, gate, outerWall` (all `deepslate_bricks`) and `innerColumn`
