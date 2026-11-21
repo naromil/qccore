@@ -84,6 +84,7 @@ public class QcAlignScreen extends Screen {
 	}
 
 	private void apply() {
+		QcClientState.requests.expect(QcRequests.Kind.ALIGN, QcClientState.history.revision());
 		QcPlatform.sendToServer(new QcAlignC2S(this.target.origin(), residue(this.fieldA), residue(this.fieldB),
 				residue(this.fieldC), PaletteCodec.toNbt(QcClientState.palette)));
 		onClose();

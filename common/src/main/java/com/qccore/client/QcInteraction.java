@@ -622,13 +622,30 @@ public final class QcInteraction {
 			if (QcClientState.plan.isEmpty()) {
 				return false;
 			}
-			QcPlan fresh = new QcPlan();
-			fresh.clearMargin = QcClientState.plan.clearMargin;
-			fresh.ground = QcClientState.plan.ground;
-			fresh.styles().putAll(QcClientState.plan.styles());
-			QcClientState.plan = fresh;
+			QcClientState.plan = QcClientState.plan.emptied();
 			return true;
 		});
+	}
+
+	/**
+	 * Called when the server applied the plan that was sent at history revision {@code revision}.
+	 * If the plan is still that one, it is emptied as one undoable step (Z brings it back), since
+	 * its units and roads now stand in the world and a second K would build them again. A plan
+	 * edited while the apply was on its way is kept, since it is no longer what was applied.
+	 * Returns a note for the result message.
+	 */
+	static String planApplied(int revision) {
+		if (QcClientState.history.revision() != revision) {
+			return "; the plan changed meanwhile and was kept (Clear plan empties it)";
+		}
+		if (QcClientState.plan.isEmpty()) {
+			return "";
+		}
+		QcClientState.history.push(QcClientState.plan);
+		QcClientState.plan = QcClientState.plan.emptied();
+		QcClientState.points.clear();
+		QcClientState.changed();
+		return "; plan cleared (Z brings it back)";
 	}
 
 	/** Runs an arbitrary plan edit from a screen, as one undoable step. */

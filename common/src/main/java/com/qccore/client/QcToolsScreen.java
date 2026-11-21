@@ -112,10 +112,12 @@ public class QcToolsScreen extends Screen {
 		this.addRenderableWidget(new Chip(this.left + 4, y, third, CHIP_H, "Clear plan", QcInteraction::clearPlan)
 				.accent(QcUi.ERROR).tip("Empty the plan (undoable)"));
 		this.addRenderableWidget(new Chip(this.left + 6 + third, y, third, CHIP_H, "Undo apply", () -> {
+			QcClientState.requests.expect(QcRequests.Kind.UNDO, QcClientState.history.revision());
 			QcPlatform.sendToServer(new QcUndoC2S());
 			onClose();
 		}).tip("Undo the last apply in the world (/qc undo)"));
 		this.addRenderableWidget(new Chip(this.left + 8 + 2 * third, y, third, CHIP_H, "Redo apply", () -> {
+			QcClientState.requests.expect(QcRequests.Kind.REDO, QcClientState.history.revision());
 			QcPlatform.sendToServer(new QcRedoC2S());
 			onClose();
 		}).tip("Re-apply what the last world undo removed (/qc redo)"));

@@ -69,6 +69,11 @@ public final class QCCoreClient {
 	}
 
 	private static void receiveResult(boolean ok, String message) {
+		QcRequests.Pending request = QcClientState.requests.answered();
+		if (ok && request != null && request.kind() == QcRequests.Kind.APPLY) {
+			// what was applied now stands in the world: it leaves the plan, so K cannot build it twice
+			message += QcInteraction.planApplied(request.revision());
+		}
 		QcClientState.say(message);
 		Minecraft client = Minecraft.getInstance();
 		if (ok && client.player != null) {

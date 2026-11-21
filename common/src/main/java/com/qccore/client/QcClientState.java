@@ -43,6 +43,8 @@ public final class QcClientState {
 	public static int planVersion;
 	/** Undo/redo of plan edits (not of the world: that is the server's {@code /qc undo}). */
 	public static final QcHistory history = new QcHistory();
+	/** The requests sent to the server whose result has not come back yet, oldest first. */
+	public static final QcRequests requests = new QcRequests();
 
 	/** What a right click does, and the shape it does it over. */
 	public static QcTool tool = QcTool.UNITS;
@@ -102,6 +104,7 @@ public final class QcClientState {
 		plan = fresh;
 		building = null;
 		history.clear();
+		requests.clear();
 		points.clear();
 		planVersion++;
 		nearbyUnits.clear();

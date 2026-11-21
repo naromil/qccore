@@ -242,6 +242,21 @@ public final class QcPlan {
         return copy;
     }
 
+    /**
+     * An empty plan with this plan's settings: styles, decor, clear margin and ground. What
+     * "Clear plan" and a successful apply leave behind.
+     */
+    public QcPlan emptied() {
+        QcPlan out = new QcPlan();
+        styles.forEach((k, v) -> out.styles.put(k, v.copy()));
+        out.decorStyle = decorStyle;
+        out.decorDensity = decorDensity;
+        out.decorSeed = decorSeed;
+        out.clearMargin = clearMargin;
+        out.ground = ground;
+        return out;
+    }
+
     /** Every cell the plan touches (units, clears and roads). */
     public Set<Cell> cells() {
         Set<Cell> cells = new LinkedHashSet<>();

@@ -36,6 +36,8 @@ public final class QcPlanTransfer {
 			QcClientState.say("QC: could not encode the plan: " + e.getMessage());
 			return;
 		}
+		// the server answers a transfer with exactly one result, whether it applies or refuses it
+		QcClientState.requests.expect(QcRequests.Kind.APPLY, QcClientState.history.revision());
 		int id = ++transfer;
 		int total = Math.max(1, (bytes.length + QcPlanC2S.CHUNK - 1) / QcPlanC2S.CHUNK);
 		for (int i = 0; i < total; i++) {

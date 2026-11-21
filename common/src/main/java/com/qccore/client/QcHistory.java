@@ -14,6 +14,7 @@ public final class QcHistory {
 
 	private final Deque<QcPlan> undo = new ArrayDeque<>();
 	private final Deque<QcPlan> redo = new ArrayDeque<>();
+	private int revision;
 
 	/** Records {@code before} as an undo step and drops the redo branch. */
 	public void push(QcPlan before) {
@@ -22,6 +23,7 @@ public final class QcHistory {
 			this.undo.removeLast();
 		}
 		this.redo.clear();
+		this.revision++;
 	}
 
 	/** The plan before the last edit, or {@code null}; {@code current} becomes redoable. */
@@ -30,6 +32,7 @@ public final class QcHistory {
 			return null;
 		}
 		this.redo.push(current.copy());
+		this.revision++;
 		return this.undo.pop();
 	}
 
@@ -39,6 +42,7 @@ public final class QcHistory {
 			return null;
 		}
 		this.undo.push(current.copy());
+		this.revision++;
 		return this.redo.pop();
 	}
 
@@ -53,5 +57,14 @@ public final class QcHistory {
 	public void clear() {
 		this.undo.clear();
 		this.redo.clear();
+		this.revision++;
+	}
+
+	/**
+	 * Moves on every push, undo, redo and clear, so it tells whether the plan was edited since a
+	 * moment (every plan edit goes through this history).
+	 */
+	public int revision() {
+		return this.revision;
 	}
 }

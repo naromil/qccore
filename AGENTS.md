@@ -210,7 +210,11 @@ Server/client split:
   `palette`, `nearbyUnits`, `dimension`, `message`) plus the planning state (`plan`, `planVersion`, `history`, `tool`,
   `shape`, `points`, `componentMask`, `modifiers`, `roadStyle(s)`, `template*`, `blockPreview`), read by the renderer,
   HUD, screens and keybinds. Every plan edit goes through `QcInteraction.edit` (snapshot, run, push to `QcHistory`
-  only if it changed, bump `planVersion`). `QcKeys` holds fourteen keybinds (G editor, Y re-anchor, H duplicate
+  only if it changed, bump `planVersion`). A successful apply empties the plan (`QcInteraction.planApplied`, one
+  undoable step, settings kept via `QcPlan.emptied`), since its units and roads now stand in the world and a second K
+  would build them again; a plan edited while the apply was on its way (`QcHistory.revision` moved) is kept. The result
+  packet doesn't say what it answers, so `QcRequests` queues every apply/align/undo/redo request sent and the server
+  answers each with exactly one result, in order: keep it that way, or tag the result packet. `QcKeys` holds fourteen keybinds (G editor, Y re-anchor, H duplicate
   layer, J export, K apply, I components, U align, O overlay, B tools, V shape, N tool, Z undo/Shift redo, R turn
   template, M ghosts) in category `key.categories.qccore`. Input arrives through the loader glue (Fabric `MinecraftClientMixin`,
   Forge input events, see the table above) while a session is active and no screen is open, forwarding to
@@ -254,7 +258,7 @@ Bit layout of `w`/`g`, identical in `LayersCodec`, `QcUnitRecord` and `QcOverlay
 | `common/src/main/java/com/qccore/core/plan/` | the plan model: `QcPlan`, `Cell`, `BuildShape`, `Modifiers`, `ComponentMask` (legacy), `Flags`, `BuildingSpec`, `RoadKit`, `BlockIds`, `PlanCompiler` |
 | `common/src/test/java/com/qccore/core/` | JUnit tests over registry-free logic (`plan/` holds the shape, plan and road tests) |
 | `common/src/test/java/com/qccore/net/` | `PlanRequestDecodeTest`: the bounded inflate of a plan request |
-| `common/src/test/java/com/qccore/client/` | `QcHistoryTest`: the registry-free plan undo/redo history |
+| `common/src/test/java/com/qccore/client/` | `QcHistoryTest`: the registry-free plan undo/redo history; `QcRequestsTest`: results matched to requests, history revision, `QcPlan.emptied` |
 | `fabric/src/gametest/java/com/qccore/gametest/` | 10 gametests plus `TestFixtures` (fixtures + golden plumbing) |
 | `fabric/src/gametest/resources/` | the `qccore-gametest` mod metadata and `golden/unit-{export,import}-baseline.txt` |
 
@@ -417,7 +421,7 @@ Mojang names), so anything touching `BuiltInRegistries.BLOCK` is a gametest inst
 
 | Suite | Files | Covers |
 |---|---|---|
-| JUnit, 44 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest`, `plan/BuildShapeTest`, `plan/QcPlanTest`, `plan/RoadKitTest`, `qc/DistrictTest`, `net/PlanRequestDecodeTest`, `client/QcHistoryTest` | the qckit port: a house's frame/floor/door/road/roof, every template x roof x pier kind builds with no missing role, unchosen roles reported together, fallbacks and optional roles, partition overrides (open = gate flag alone), shared planes between buildings, stripped templates and fresh building keys on stamping, pre-rework plans loading as one legacy building, decor on the road and never in a doorway, seeded, an empty decor style placing nothing; lattice math and residues; the index NBT round trip plus malformed state; the `w`/`g` bit layout and a playlist round trip; shapes and modifiers; partitions, rotation/mirror of flags, normalise/merge, `PlanCodec` round trip; the road contract (7 wide, lanes, joints, corner posts, medallion, plaza post, give-way); a plan request round-trips through the bounded inflate and a gzip bomb is refused; plan undo/redo depth, redo drop and the 100-step cap |
+| JUnit, 44 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest`, `plan/BuildShapeTest`, `plan/QcPlanTest`, `plan/RoadKitTest`, `qc/DistrictTest`, `net/PlanRequestDecodeTest`, `client/QcHistoryTest`, `client/QcRequestsTest` | the qckit port: a house's frame/floor/door/road/roof, every template x roof x pier kind builds with no missing role, unchosen roles reported together, fallbacks and optional roles, partition overrides (open = gate flag alone), shared planes between buildings, stripped templates and fresh building keys on stamping, pre-rework plans loading as one legacy building, decor on the road and never in a doorway, seeded, an empty decor style placing nothing; lattice math and residues; the index NBT round trip plus malformed state; the `w`/`g` bit layout and a playlist round trip; shapes and modifiers; partitions, rotation/mirror of flags, normalise/merge, `PlanCodec` round trip; the road contract (7 wide, lanes, joints, corner posts, medallion, plaza post, give-way); a plan request round-trips through the bounded inflate and a gzip bomb is refused; plan undo/redo depth, redo drop and the 100-step cap; a result is matched to the oldest pending request and an applied plan empties to its settings |
 | Gametests, 10 tests | `QcGameTests`, `QcPlanGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, an align moves the building, layer 0 and non-creative are refused; a plan (full unit, framework-only unit, cleared cell, road) applies and records its road cells as roads, `/qc undo` restores every block and record, redo re-applies it, a second undo restores it again and a new apply drops the redo stack; plan refusals are user-visible; a qckit house applies with real block states (upright log posts, beams along their axis, a door on the road face, a hip roof, the road, street decor) and an empty style is refused naming its roles |
 
 Golden mechanics: baselines are **classpath resources** (`/golden/unit-export-baseline.txt`) inside the test mod,
