@@ -87,6 +87,18 @@ public final class QcPlanService {
                 index.put(dimension, origin, QcUnitRecord.of(origin, entry.getValue()));
             }
         }
+        // Road cells are recorded too, so a later plan joins them without a /qc scan. A building
+        // record already standing at a road cell's origin is kept: the road never clears a footprint,
+        // so that building is still there (and the prune drops it once it is mined).
+        for (Cell cell : plan.roads().keySet()) {
+            BlockPos origin = PlanCompiler.origin(anchor, cell);
+            QcUnitRecord standing = index.units(dimension).get(origin);
+            if (standing != null && standing.isBuilding()) {
+                continue;
+            }
+            previous.put(origin, standing);
+            index.put(dimension, origin, new QcUnitRecord(origin, 0, 0, QcUnitRecord.ROAD, 0));
+        }
         QcUndoService.push(player, new QcUndoService.Entry(dimension, undo, previous));
 
         String message = "applied plan: " + plan.summary() + " at " + anchor.toShortString() + ", "

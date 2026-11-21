@@ -11,7 +11,7 @@ import net.minecraft.nbt.CompoundTag;
  *
  * <p>Bit layout (identical to the layer wire format): <b>bit0 = NORTH, bit1 = EAST, bit2 = SOUTH,
  * bit3 = WEST</b>. {@code kind} is {@link #BUILDING} for every unit the mod applied and {@link #ROAD}
- * only for road cells {@code /qc scan} found; {@code doors} (same bits) is filled in by the scan, so a
+ * for road cells, recorded by a plan's apply or found by {@code /qc scan}; {@code doors} (same bits) is filled in by the scan, so a
  * later plan knows where an existing building opens onto the street. Both are left out of the NBT when
  * zero, so records written before them read back unchanged.
  */

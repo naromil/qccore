@@ -95,6 +95,13 @@ public class QcPlanGameTests implements FabricGameTest {
         if (!records.containsKey(full) || !records.containsKey(frameOnly)) {
             throw new AssertionError("the applied units were not registered");
         }
+        BlockPos roadCell = anchor.offset(8 * 5, 8, 0);
+        for (BlockPos cell : List.of(roadCell, roadCell.offset(0, 0, 8))) {
+            QcUnitRecord roadRecord = QcUnitIndex.get(world).units(dimension).get(cell);
+            if (roadRecord == null || roadRecord.kind() != QcUnitRecord.ROAD) {
+                throw new AssertionError("the applied road cell at " + cell.toShortString() + " was not recorded as a road");
+            }
+        }
         if (QcUndoService.depth(player) != 1) {
             throw new AssertionError("expected one undo step, found " + QcUndoService.depth(player));
         }
@@ -112,8 +119,8 @@ public class QcPlanGameTests implements FabricGameTest {
             }
         }
         Map<BlockPos, ?> after = QcUnitIndex.get(world).units(dimension);
-        if (after.containsKey(full) || after.containsKey(frameOnly)) {
-            throw new AssertionError("undo left the unit records behind");
+        if (after.containsKey(full) || after.containsKey(frameOnly) || after.containsKey(roadCell)) {
+            throw new AssertionError("undo left the unit or road records behind");
         }
 
         // redo puts the apply back, and undoing again restores the world once more
