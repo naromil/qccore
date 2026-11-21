@@ -196,7 +196,8 @@ Server/client split:
 - `/qc scan [radius]` = `QcScanService` (server, read-only towards the world) over the registry-free
   `core/scan/QcScanner`: it reads the box (radius 8..64, 16 below to 40 above) once, picks the one of the 512
   grid offsets that explains the most building units (all 12 framework edges built, terrain blocks counting as
-  gaps, interior at least a quarter air), then classifies shared sides (wall / gate = 3x3 passage at floor
+  gaps, interior at least a quarter air, origin corner not air since `QcUnitIndex.prune` drops such records;
+  a framed cell refused for its origin is no road either), then classifies shared sides (wall / gate = 3x3 passage at floor
   level / open, mapped onto the partition flags), doors (door blocks at a 4, y 1-2, or qckit's 3x3 archway) and
   floods road cells from the ground units (laid 7x7 floor, terrain excluded, at most 1/6 of the space above
   filled). It only adds origins the index doesn't know.

@@ -174,4 +174,18 @@ class QcScannerTest {
         assertFalse(result.units().stream().anyMatch(u -> u.kind() == QcScanner.Kind.ROAD));
         assertTrue(QcScanner.first(-12, 3) == -13 + 8 && QcScanner.first(5, 5) == 5);
     }
+
+    @Test
+    void aUnitWhoseOriginCornerIsMinedIsSkipped() {
+        frame(3, 66, 5);
+        frame(11, 66, 5);
+        frame(19, 66, 5);
+        set(3, 66, 5, "minecraft:air");      // A: origin corner mined (the index would prune it)
+        set(19, 66, 13, "minecraft:air");    // C: another corner mined, still within the wear allowance
+        QcScanner.Result result = new QcScanner(this::get, -4, 60, -4, 40, 90, 30).scan();
+        assertNotNull(result);
+        assertNull(at(result, 3, 66, 5));    // neither a building nor a road record
+        assertNotNull(at(result, 11, 66, 5));
+        assertNotNull(at(result, 19, 66, 5));
+    }
 }

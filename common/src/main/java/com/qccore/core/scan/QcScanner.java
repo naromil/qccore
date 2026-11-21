@@ -165,9 +165,16 @@ public final class QcScanner {
 
     /**
      * All twelve edges built (two gaps allowed for wear) and at least a quarter of the interior air. A
-     * natural block on an edge counts as a gap, so a cave in solid rock is never read as a room.
+     * natural block on an edge counts as a gap, so a cave in solid rock is never read as a room. The origin
+     * corner itself must not be air: the unit index drops a building record whose origin is air on its next
+     * sync ({@code QcUnitIndex.prune}), so such a cell would be recorded and then vanish.
      */
     boolean isBuildingCell(int x, int y, int z) {
+        return !isAir(name(x, y, z)) && framed(x, y, z);
+    }
+
+    /** The edge and interior test of {@link #isBuildingCell} without the origin rule. */
+    private boolean framed(int x, int y, int z) {
         int gaps = 0;
         for (int i = 0; i <= 8 && gaps <= 2; i++) {
             for (int p = 0; p <= 8; p += 8) {
@@ -274,8 +281,8 @@ public final class QcScanner {
             if (seen.put(k, Boolean.TRUE) != null || buildings.containsKey(k) || !inside(c)) {
                 continue;
             }
-            if (!isRoadCell(c)) {
-                continue;
+            if (!isRoadCell(c) || framed(c[0], c[1], c[2])) {
+                continue;                                   // a framed cell left out of the buildings is no street
             }
             roads.put(k, c);
             for (int s = 0; s < 4; s++) {
@@ -338,6 +345,11 @@ public final class QcScanner {
 
     private boolean solid(int x, int y, int z) {
         return inBox(x, y, z) && solidByIndex[cells[index(x, y, z)]];
+    }
+
+    /** Air as the world's {@code isAir()} sees it (water and lava are not air there). */
+    private static boolean isAir(String bare) {
+        return bare.equals("air") || bare.equals("cave_air") || bare.equals("void_air");
     }
 
     private String name(int[] p) {
