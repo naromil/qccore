@@ -68,6 +68,68 @@ class SurroundingsTest {
     }
 
     @Test
+    void aStandingBuildingKeepsItsCellAndSharedPlane() {
+        QcPlan plan = DistrictTest.house("house", 2, 1, 1);
+        Surroundings around = new Surroundings(Set.of(), Map.of(), Set.of(new Cell(2, 1, 0)));
+        Map<BlockPos, String> alone = District.build(plan).blocks();
+        Map<BlockPos, String> next = District.build(plan, around).blocks();
+        assertTrue(alone.keySet().stream().anyMatch(p -> inCell(p, 2, 1, 0)), "without it the house writes its east plane");
+        for (BlockPos p : next.keySet()) {
+            assertFalse(inCell(p, 2, 1, 0), "a block written into the standing building: " + p);
+        }
+        assertNotNull(next.get(new BlockPos(0, 9, 0)), "the house itself still stands");
+    }
+
+    @Test
+    void aStandingBuildingTheSamePlanRebuildsIsNotKept() {
+        QcPlan plan = DistrictTest.house("house", 2, 1, 1);
+        Surroundings around = new Surroundings(Set.of(), Map.of(), Set.of(new Cell(0, 1, 0), new Cell(1, 1, 0)));
+        assertEquals(District.build(plan).blocks(), District.build(plan, around).blocks());
+    }
+
+    @Test
+    void outwardDecorationYieldsToAStandingRoadBelowHeadHeight() {
+        QcPlan plan = DistrictTest.house("house", 2, 1, 2);
+        Surroundings around = new Surroundings(Set.of(new Cell(0, 1, -1), new Cell(1, 1, -1)), Map.of());
+        for (BlockPos p : District.build(plan, around).blocks().keySet()) {
+            boolean overRoad = p.getZ() < 0 && p.getZ() >= -8 && p.getX() >= 0 && p.getX() <= 16;
+            assertFalse(overRoad && p.getY() < 12, "decoration below head height over the standing road: " + p);
+        }
+    }
+
+    @Test
+    void aStandingDoorKeepsItsWholeApproach() {
+        // bit3 = WEST: the step is one block west of the cell's x 0 plane, 3 wide, 2 high
+        Surroundings around = new Surroundings(Set.of(), Map.of(new Cell(3, 1, 0), 0b1000), Set.of(new Cell(3, 1, 0)));
+        Map<BlockPos, String> zone = District.doorZones(Map.of(), around);
+        assertEquals(6, zone.size());
+        for (int z = 3; z <= 5; z++) {
+            for (int y = 9; y <= 10; y++) {
+                assertEquals("*", zone.get(new BlockPos(23, y, z)));
+            }
+        }
+    }
+
+    @Test
+    void nothingOutwardLandsOnAPlannedDoorStep() {
+        QcPlan plan = DistrictTest.house("house", 3, 1, 2);
+        Map<BlockPos, String> b = District.build(plan).blocks();
+        long doors = b.entrySet().stream().filter(e -> e.getValue().contains("_door") && e.getKey().getZ() == 8).count();
+        assertTrue(doors > 0);
+        b.forEach((p, s) -> {
+            if (s.contains("_door") && p.getZ() == 8) {
+                String step = b.get(new BlockPos(p.getX(), p.getY(), 9));
+                assertNull(step, "outward block on the door step at " + p.getX() + "," + p.getY() + ",9");
+            }
+        });
+    }
+
+    private static boolean inCell(BlockPos p, int cx, int layer, int cz) {
+        return p.getX() >= cx * 8 && p.getX() <= cx * 8 + 8 && p.getY() >= layer * 8 && p.getY() <= layer * 8 + 8
+                && p.getZ() >= cz * 8 && p.getZ() <= cz * 8 + 8;
+    }
+
+    @Test
     void noSurroundingsCompilesAsBefore() {
         QcPlan plan = DistrictTest.house("house", 2, 1, 1);
         assertEquals(District.build(plan).blocks(), District.build(plan, Surroundings.NONE).blocks());
