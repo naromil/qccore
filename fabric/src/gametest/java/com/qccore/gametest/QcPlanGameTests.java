@@ -175,6 +175,62 @@ public class QcPlanGameTests implements FabricGameTest {
         ctx.succeed();
     }
 
+    /**
+     * A new unit's clear: the 2-block shell sits just outside the west/north faces as well as the
+     * east/south ones, takes only natural terrain, never reaches under the floor or into a cell that
+     * holds a standing record, and leaves the old (wrong) spot 9 blocks out alone.
+     */
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void newUnitShellSparesNeighbours(GameTestHelper ctx) {
+        ServerLevel world = ctx.getLevel();
+        BlockPos anchor = ctx.absolutePos(BlockPos.ZERO).offset(0, 40, 320);
+        ResourceLocation dimension = world.dimension().location();
+        clearIndex(world, anchor.offset(8, 8, 8));
+        BlockPos origin = anchor.offset(8, 8, 8);
+
+        BlockPos west = origin.offset(-1, 4, 4);
+        BlockPos westBuilt = origin.offset(-2, 4, 5);
+        BlockPos oldSpot = origin.offset(-9, 4, 4);
+        BlockPos below = origin.offset(4, -1, 4);
+        BlockPos east = origin.offset(9, 4, 4);
+        BlockPos northRoad = origin.offset(4, 4, -1);
+        world.setBlockAndUpdate(west, Blocks.STONE.defaultBlockState());
+        world.setBlockAndUpdate(westBuilt, Blocks.OAK_PLANKS.defaultBlockState());
+        world.setBlockAndUpdate(oldSpot, Blocks.STONE.defaultBlockState());
+        world.setBlockAndUpdate(below, Blocks.DIRT.defaultBlockState());
+        world.setBlockAndUpdate(east, Blocks.STONE.defaultBlockState());
+        world.setBlockAndUpdate(northRoad, Blocks.STONE.defaultBlockState());
+        BlockPos roadOrigin = origin.offset(0, 0, -8);
+        QcUnitIndex.get(world).put(dimension, roadOrigin, new QcUnitRecord(roadOrigin, 0, 0, QcUnitRecord.ROAD, 0));
+
+        QcPlan plan = new QcPlan();
+        plan.addUnit(new Cell(1, 1, 1), ComponentMask.ALL);
+        BlockPalette palette = new BlockPalette();
+        Defaults.applyTo(palette);
+        ServerPlayer player = ctx.makeMockServerPlayerInLevel();
+        QcResult result = QcPlanService.apply(player, anchor, plan, palette);
+        if (!result.ok()) {
+            throw new AssertionError("apply was refused: " + result.message());
+        }
+        if (!world.getBlockState(west).isAir()) {
+            throw new AssertionError("the west shell kept its terrain at " + west.toShortString());
+        }
+        if (!world.getBlockState(east).isAir()) {
+            throw new AssertionError("the east shell kept its terrain at " + east.toShortString());
+        }
+        expect(world, westBuilt, Blocks.OAK_PLANKS, "a built block in the shell");
+        expect(world, oldSpot, Blocks.STONE, "terrain 9 blocks west, outside the shell");
+        expect(world, below, Blocks.DIRT, "ground under the floor");
+        expect(world, northRoad, Blocks.STONE, "a standing road cell next to the unit");
+
+        QcUndoService.undo(player);
+        clearIndex(world, origin);
+        for (BlockPos pos : List.of(west, westBuilt, oldSpot, below, east, northRoad)) {
+            world.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
+        }
+        ctx.succeed();
+    }
+
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
     public void planChecksAreUserVisible(GameTestHelper ctx) {
         BlockPalette palette = new BlockPalette();

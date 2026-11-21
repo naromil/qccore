@@ -170,7 +170,9 @@ Server/client split:
   the records. Both return `QcResult(ok, message)`, both run on the server thread - the loader glue hops onto it
   (`server.execute(...)` on Fabric, `consumerMainThread` on Forge), and onto the client thread for S2C packets.
 - `QcWorldOps` is the **only world-write seam**: `clearFootprint` (9x9x9 cell plus a 2-block shell outside every
-  exposed face), `placeBlocks`, `clearBlocks`, `fillAir` (only replaceable blocks), `restore`, `fits`, writing with
+  exposed side and top face, never below the floor; the shell clears only natural terrain (`QcWorldOps.natural`) and
+  stays out of other planned cells and cells with a standing index record, whose shared planes the cell clear also
+  keeps), `placeBlocks`, `clearBlocks`, `fillAir` (only replaceable blocks), `restore`, `fits`, writing with
   `Block.UPDATE_ALL | Block.UPDATE_KNOWN_SHAPE` and skipping positions outside `Level.isInWorldBounds`/the height limits. Every
   write method has an overload taking an undo map (first previous state per position).
 - `QcPlanService.apply` (creative, `validate`, compile, fit check) writes clears -> footprint of **full-mask units
@@ -384,7 +386,7 @@ Paths are relative to `common/src/main/java/com/qccore/`, except where a project
 |---|---|
 | `world/QcBuildService.java` | validates a build (creative, non-empty, <= 4096 units, `layer >= 1`, framework configured, component sizes, height fit) then applies it |
 | `world/QcAlignService.java` | BFS over the connected building, `Alignment.nearestDelta` per axis, clears the old footprint, rebuilds at the shifted anchor, re-keys the index |
-| `world/QcWorldOps.java` | the only world-write seam: `clearFootprint` (cell + 2-block shell), `placeBlocks`, `fits`, with `Block.UPDATE_ALL \| Block.UPDATE_KNOWN_SHAPE` |
+| `world/QcWorldOps.java` | the only world-write seam: `clearFootprint` (cell + 2-block natural-terrain shell, sides and top), `placeBlocks`, `fits`, with `Block.UPDATE_ALL \| Block.UPDATE_KNOWN_SHAPE` |
 | `world/QcUnitIndex.java` | the `qccore_units` `SavedData`: per-dimension `BlockPos -> QcUnitRecord`; `prune` drops records whose origin block is air |
 | `core/UnitExporter.java` | the export walk; owns the component call order and the `LinkedHashMap` block map |
 | `core/UnitImporter.java` | grid detection, unit scan, the five single-block extractions, `scanSides`, re-centring on `UnitGrid.CENTER_X/CENTER_Z` |

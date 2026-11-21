@@ -74,7 +74,8 @@ public final class QcPlanService {
         ResourceLocation dimension = world.dimension().location();
         Map<BlockPos, BlockState> undo = new LinkedHashMap<>();
         QcWorldOps.clearBlocks(world, compiled.air(), undo);
-        QcWorldOps.clearFootprint(world, fullOrigins(plan, anchor), undo);
+        QcWorldOps.clearFootprint(world, fullOrigins(plan, anchor),
+                QcUnitIndex.get(world).units(world.dimension().location()).keySet(), otherCells(plan, anchor), undo);
         QcWorldOps.placeBlocks(world, compiled.blocks(), undo);
         QcWorldOps.fillAir(world, compiled.ground(), undo);
 
@@ -162,6 +163,18 @@ public final class QcPlanService {
             }
         }
         return null;
+    }
+
+    /** Origins of the plan's road and cleared cells, which a unit's shell clear stays out of. */
+    private static List<BlockPos> otherCells(QcPlan plan, BlockPos anchor) {
+        List<BlockPos> origins = new ArrayList<>();
+        for (Cell cell : plan.roads().keySet()) {
+            origins.add(PlanCompiler.origin(anchor, cell));
+        }
+        for (Cell cell : plan.clears()) {
+            origins.add(PlanCompiler.origin(anchor, cell));
+        }
+        return origins;
     }
 
     /** Origins of the qckit units and the full legacy units: only those get their footprint cleared. */

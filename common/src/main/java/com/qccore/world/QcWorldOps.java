@@ -1,5 +1,6 @@
 package com.qccore.world;
 
+import com.qccore.core.scan.QcScanner;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -9,7 +10,9 @@ import java.util.Map;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -32,50 +35,101 @@ public final class QcWorldOps {
 
     /**
      * Replaces the footprint of the given units with air: the 9x9x9 cell of every unit, plus the
-     * two-block-thick shell just outside every face that has no neighbouring unit in the set.
-     * Positions that belong to another unit's cell are left alone.
+     * two-block-thick shell just outside every side and top face that has no neighbouring unit in the set.
+     * The shell only clears natural terrain (see {@link #natural}), never reaches below a unit's floor
+     * (the ground under it and a lower layer's roof stay), and skips every position inside another
+     * unit's cell.
      */
     static void clearFootprint(ServerLevel world, Collection<BlockPos> unitOrigins) {
-        clearFootprint(world, unitOrigins, null);
+        clearFootprint(world, unitOrigins, Set.of(), Set.of(), null);
     }
 
-    /** {@link #clearFootprint(ServerLevel, Collection)} recording every previous state into {@code undo}. */
-    static void clearFootprint(ServerLevel world, Collection<BlockPos> unitOrigins, Map<BlockPos, BlockState> undo) {
+    /**
+     * {@link #clearFootprint(ServerLevel, Collection)} recording every previous state into {@code undo}.
+     * {@code standing} are origins of cells that already hold a building or road the new units must
+     * leave alone: neither the cell clear (their shared planes) nor the shell touches them, unless the
+     * cell is itself one of {@code unitOrigins}. {@code planned} are the plan's other cells (roads,
+     * cleared cells): the shell stays out of them, since the plan writes them itself.
+     */
+    static void clearFootprint(ServerLevel world, Collection<BlockPos> unitOrigins, Collection<BlockPos> standing,
+            Collection<BlockPos> planned, Map<BlockPos, BlockState> undo) {
         Set<BlockPos> origins = new HashSet<>(unitOrigins);
-        Map<Long, List<BlockPos>> buckets = bucketize(origins);
+        Set<BlockPos> kept = new HashSet<>(standing);
+        kept.removeAll(origins);
+        Set<BlockPos> others = new HashSet<>(kept);
+        others.addAll(planned);
+        others.removeAll(origins);
+        Map<Long, List<BlockPos>> ownCells = bucketize(origins);
+        Map<Long, List<BlockPos>> keptCells = bucketize(kept);
+        Map<Long, List<BlockPos>> otherCells = bucketize(others);
 
         for (BlockPos origin : origins) {
             for (int x = 0; x < CELL_SIZE; x++) {
                 for (int y = 0; y < CELL_SIZE; y++) {
                     for (int z = 0; z < CELL_SIZE; z++) {
-                        clear(world, origin.offset(x, y, z), undo);
-                    }
-                }
-            }
-
-            for (Direction direction : Direction.values()) {
-                if (origins.contains(origin.relative(direction, 8))) {
-                    continue;
-                }
-
-                int sign = direction.getAxisDirection().getStep();
-                for (int t = CELL_SIZE; t < CELL_SIZE + SHELL_THICKNESS; t++) {
-                    for (int a = 0; a < CELL_SIZE; a++) {
-                        for (int b = 0; b < CELL_SIZE; b++) {
-                            BlockPos pos = switch (direction.getAxis()) {
-                                case X -> new BlockPos(origin.getX() + sign * t, origin.getY() + a, origin.getZ() + b);
-                                case Y -> new BlockPos(origin.getX() + a, origin.getY() + sign * t, origin.getZ() + b);
-                                case Z -> new BlockPos(origin.getX() + a, origin.getY() + b, origin.getZ() + sign * t);
-                            };
-                            if (insideAnyCell(buckets, pos)) {
-                                continue;
-                            }
+                        BlockPos pos = origin.offset(x, y, z);
+                        if (!insideAnyCell(keptCells, pos)) {
                             clear(world, pos, undo);
                         }
                     }
                 }
             }
+
+            for (Direction direction : Direction.values()) {
+                if (direction == Direction.DOWN || origins.contains(origin.relative(direction, 8))) {
+                    continue;
+                }
+                for (BlockPos pos : shell(origin, direction)) {
+                    if (insideAnyCell(ownCells, pos) || insideAnyCell(otherCells, pos)) {
+                        continue;
+                    }
+                    if (inWorld(world, pos) && natural(world.getBlockState(pos))) {
+                        clear(world, pos, undo);
+                    }
+                }
+            }
         }
+    }
+
+    /**
+     * The two-block slab just outside one face of the cell at {@code origin}: x/y/z 9..10 on the
+     * positive faces, -1..-2 on the negative ones (the cell spans 0..8).
+     */
+    static List<BlockPos> shell(BlockPos origin, Direction direction) {
+        List<BlockPos> out = new ArrayList<>(SHELL_THICKNESS * CELL_SIZE * CELL_SIZE);
+        boolean positive = direction.getAxisDirection() == Direction.AxisDirection.POSITIVE;
+        for (int k = 1; k <= SHELL_THICKNESS; k++) {
+            int t = positive ? CELL_SIZE - 1 + k : -k;
+            for (int a = 0; a < CELL_SIZE; a++) {
+                for (int b = 0; b < CELL_SIZE; b++) {
+                    out.add(switch (direction.getAxis()) {
+                        case X -> origin.offset(t, a, b);
+                        case Y -> origin.offset(a, t, b);
+                        case Z -> origin.offset(a, b, t);
+                    });
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Natural terrain a new unit's shell may clear: the scanner's terrain blocks (ground, stone, sand,
+     * water...), leaves and anything replaceable (grass, flowers, snow layers). Anything else is taken
+     * as built by someone and stays.
+     */
+    static boolean natural(BlockState state) {
+        if (state.isAir()) {
+            return false;
+        }
+        if (state.canBeReplaced() || state.is(BlockTags.LEAVES)) {
+            return true;
+        }
+        return QcScanner.isTerrain(BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath());
+    }
+
+    private static boolean inWorld(ServerLevel world, BlockPos pos) {
+        return Level.isInSpawnableBounds(pos) && pos.getY() >= world.getMinBuildHeight() && pos.getY() < world.getMaxBuildHeight();
     }
 
     /** Writes every block of the layout, skipping positions outside the world. */

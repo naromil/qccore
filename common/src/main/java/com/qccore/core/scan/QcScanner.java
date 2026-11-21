@@ -66,6 +66,11 @@ public final class QcScanner {
             "powder_snow", "ice", "packed_ice", "blue_ice", "netherrack", "soul_sand", "soul_soil", "end_stone",
             "basalt", "blackstone", "moss_block", "bedrock", "water", "lava");
 
+    /** Whether a bare block name (no namespace) is natural terrain in the sense above. */
+    public static boolean isTerrain(String bareName) {
+        return TERRAIN.contains(bareName);
+    }
+
     private final int minX, minY, minZ, maxX, maxY, maxZ;
     private final int sizeX, sizeY, sizeZ;
     /** The box read once: a palette index per position, the palette's bare names and solidity. */
