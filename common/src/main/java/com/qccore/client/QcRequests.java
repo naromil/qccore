@@ -38,6 +38,21 @@ public final class QcRequests {
 		return this.pending.pollFirst();
 	}
 
+	/**
+	 * Whether a request of {@code kind} sent at plan revision {@code revision} still waits for its
+	 * result. K pressed again before the apply's result arrives would send the same plan twice: the
+	 * server builds it twice, the first world undo then only reverts the copy, and the late second
+	 * result reports the plan as changed.
+	 */
+	public boolean waiting(Kind kind, int revision) {
+		for (Pending request : this.pending) {
+			if (request.kind() == kind && request.revision() == revision) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public int size() {
 		return this.pending.size();
 	}

@@ -6,6 +6,7 @@ import com.qccore.core.plan.QcPlan;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -25,6 +26,19 @@ class QcRequestsTest {
         assertEquals(4, apply.revision());
         // a result nobody waits for (none should come) answers nothing
         assertNull(requests.answered());
+    }
+
+    @Test
+    void anApplyOfTheSameRevisionStillOnItsWayIsWaiting() {
+        QcRequests requests = new QcRequests();
+        requests.expect(QcRequests.Kind.UNDO, 7);
+        assertFalse(requests.waiting(QcRequests.Kind.APPLY, 7), "an undo is not an apply");
+        requests.expect(QcRequests.Kind.APPLY, 7);
+        assertTrue(requests.waiting(QcRequests.Kind.APPLY, 7), "K again before the result would send the plan twice");
+        assertFalse(requests.waiting(QcRequests.Kind.APPLY, 8), "an edited plan may be applied");
+        requests.answered();
+        requests.answered();
+        assertFalse(requests.waiting(QcRequests.Kind.APPLY, 7), "once answered, the plan may be applied again");
     }
 
     @Test

@@ -683,6 +683,11 @@ public final class QcInteraction {
 			QcClientState.say("QC: the plan is empty");
 			return;
 		}
+		if (QcClientState.requests.waiting(QcRequests.Kind.APPLY, QcClientState.history.revision())) {
+			// the same plan is on its way already; an edit (a new revision) may be applied again
+			QcClientState.say("QC: this plan is already being applied");
+			return;
+		}
 		QcPlanTransfer.sendApply(QcClientState.anchor, QcClientState.plan, QcClientState.palette);
 		QcClientState.say("QC: applying plan (" + QcClientState.plan.summary() + ")...");
 	}
