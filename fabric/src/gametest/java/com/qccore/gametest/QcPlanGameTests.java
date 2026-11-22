@@ -240,9 +240,14 @@ public class QcPlanGameTests implements FabricGameTest {
 
         assertRefused(QcPlanService.apply(player, anchor, new QcPlan(), palette), "the plan is empty");
 
-        QcPlan ground = new QcPlan();
-        ground.clears().add(new Cell(0, 0, 0));
-        assertRefused(QcPlanService.apply(player, anchor, ground, palette), "layer 0 is not allowed (layers start at 1)");
+        // layers are offsets from the anchor, so a plan may reach below layer 1 (T16)
+        QcPlan below = new QcPlan();
+        below.clears().add(new Cell(0, 0, 0));
+        below.addUnit(new Cell(0, -2, 0), ComponentMask.FLOOR);
+        QcResult belowResult = QcPlanService.validate(below, palette);
+        if (belowResult != null) {
+            throw new AssertionError("a plan below layer 1 was refused: " + belowResult.message());
+        }
 
         QcPlan road = new QcPlan();
         road.roads().put(new Cell(0, 1, 0), "nowhere");

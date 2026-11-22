@@ -68,8 +68,11 @@ the original QCSimple-port spec, is no longer in the repo.)
 - **Domain:** a **QC Unit** is a 9x9x9 block cell with a 7x7x7 interior. Units are spaced **8 blocks apart** on every
   axis, so neighbours *share* the boundary plane (local `0` of one unit is local `8` of the next); unit origins
   satisfy `x = 8*dx + anchorX` (same for `y`, `z`) and unit-local `(x, y, z)` lands at `absX = dx*8 + x`,
-  `absY = dy*8 + y`, `absZ = dz*8 + z`. **Layers start at 1**: layer `dy` is the row based at `anchor + 8*dy`, and
-  layer 1 is the player's own cell when the editor is entered. A placing tool (units, template) aimed at a block's
+  `absY = dy*8 + y`, `absZ = dz*8 + z`. Layer `dy` is the row based at `anchor + 8*dy`, and layer 1 is the
+  player's own cell when the editor is entered. **Layers are only offsets from the anchor**: a plan may use any layer,
+  0 and below included (T16, user: "the selection can't go down below the level where I open the editor interface");
+  the world height limit is the only floor (`QcWorldOps` skips blocks outside it). The legacy `/qc build` path
+  (`QcBuildService`, `UnitLayers` keyed `dy + 1` on import) still refuses layers below 1. A placing tool (units, template) aimed at a block's
   **top face** works on the layer whose floor plane is nearest that block (`Alignment.nearestLayer`: local y 0..4 →
   that layer, 5..7 → the one above; user's rule, review #14); side faces and misses use the aimed block's layer, and
   the lattice itself never moves for terrain. `Cursor.hitLayer` keeps the aimed block's layer for the align key.

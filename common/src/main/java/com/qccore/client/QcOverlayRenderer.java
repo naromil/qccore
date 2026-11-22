@@ -215,16 +215,13 @@ public final class QcOverlayRenderer {
 	 * tool would make of them, plus the mirror planes. Units (building, template, assign, erase) show
 	 * the unit's framework: four posts and eight beams, each one block thick over the full 9-block
 	 * unit; partition tools show the shared sides they would set; a road shows its 7-wide floor; a
-	 * clear shows the volume it empties. Cells below layer 1 are skipped, since every tool refuses them.
+	 * clear shows the volume it empties.
 	 */
 	private static void drawShape(Minecraft client, PoseStack matrices, VertexConsumer vertices, Set<Cell> preview) {
 		QcTool tool = QcClientState.tool;
 		boolean frames = preview.size() <= FRAME_LIMIT;
 		int drawn = 0;
 		for (Cell cell : preview) {
-			if (cell.layer() < 1) {
-				continue;
-			}
 			if (drawn++ >= CELL_LIMIT) {
 				break;
 			}
@@ -342,7 +339,7 @@ public final class QcOverlayRenderer {
 	 * face-offset placement, a template, the height point of a box).
 	 */
 	private static void drawCursor(PoseStack matrices, VertexConsumer vertices, Cursor cursor, Set<Cell> preview) {
-		if (cursor == null || cursor.layer() < 1 || preview.contains(Cell.of(cursor.cell(), cursor.layer()))) {
+		if (cursor == null || preview.contains(Cell.of(cursor.cell(), cursor.layer()))) {
 			return;
 		}
 		drawBox(matrices, vertices, QcInteraction.cellOrigin(cursor.cell(), cursor.layer()), 8.0,

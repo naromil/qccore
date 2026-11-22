@@ -128,11 +128,6 @@ public final class QcPlanService {
         if (plan.roads().size() > MAX_CELLS) {
             return new QcResult(false, "the plan has " + plan.roads().size() + " road cells; the limit is " + MAX_CELLS);
         }
-        for (Cell cell : plan.cells()) {
-            if (cell.layer() < 1) {
-                return new QcResult(false, "layer " + cell.layer() + " is not allowed (layers start at 1)");
-            }
-        }
         if (!PlanCompiler.hasLegacyUnits(plan)) {
             return null;
         }

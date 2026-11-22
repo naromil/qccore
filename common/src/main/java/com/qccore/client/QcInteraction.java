@@ -44,7 +44,6 @@ import net.minecraft.world.phys.Vec3;
  * edit is a step of {@link QcClientState#history}.
  */
 public final class QcInteraction {
-	private static final String LAYER_MESSAGE = "QC: layers start at 1";
 	private static final String FACE_MESSAGE = "QC: look at a side face to place walls";
 	private static final String PAIR_MESSAGE = "QC: both QC units must exist to attach a wall";
 	private static final String NO_UNIT_MESSAGE = "QC: no placed QC Unit in the crosshair";
@@ -283,15 +282,8 @@ public final class QcInteraction {
 	/** Applies a tool to a set of cells; returns whether the plan changed. */
 	static boolean runTool(QcTool tool, Set<Cell> cells) {
 		QcPlan plan = QcClientState.plan;
-		Set<Cell> valid = new LinkedHashSet<>();
-		for (Cell cell : cells) {
-			if (cell.layer() >= 1) {
-				valid.add(cell);
-			}
-		}
-		if (valid.size() < cells.size() && tool != QcTool.ERASE) {
-			QcClientState.say(LAYER_MESSAGE);
-		}
+		// any layer, below the anchor too: layers are only offsets from it (the world height limit is the server's)
+		Set<Cell> valid = new LinkedHashSet<>(cells);
 		switch (tool) {
 			case UNITS -> {
 				if (valid.isEmpty()) {
@@ -416,10 +408,6 @@ public final class QcInteraction {
 		QcPlan template = QcClientState.template;
 		if (template == null) {
 			QcClientState.say("QC: choose a template first (B -> Templates)");
-			return false;
-		}
-		if (at.layer() < 1) {
-			QcClientState.say(LAYER_MESSAGE);
 			return false;
 		}
 		List<QcPlan> placements = templatePlacements(at);
@@ -653,7 +641,7 @@ public final class QcInteraction {
 	/** Copies the cursor layer (units, masks, roads, clears) into the layer above it. */
 	private static boolean duplicateLayer(Minecraft client) {
 		Cursor cursor = cursor(client);
-		if (cursor == null || cursor.layer() < 1) {
+		if (cursor == null) {
 			return false;
 		}
 		int layer = cursor.layer();
@@ -735,7 +723,7 @@ public final class QcInteraction {
 	private static QcUnitRecord crosshairUnit(Minecraft client) {
 		Cursor cursor = cursor(client);
 		BlockPos anchor = QcClientState.anchor;
-		if (cursor == null || anchor == null || cursor.hitLayer() < 1) {
+		if (cursor == null || anchor == null) {
 			return null;
 		}
 		// the unit actually hit, not the layer a placing tool would build on

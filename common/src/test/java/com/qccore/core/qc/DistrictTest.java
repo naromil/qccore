@@ -94,6 +94,21 @@ class DistrictTest {
         assertTrue(town.values().stream().anyMatch(s -> s.equals("minecraft:mossy_block")));
     }
 
+    /** Layers are offsets from the session anchor: a plan moved below layer 1 builds the same blocks, lower (T16). */
+    @Test
+    void aPlanBelowLayerOneBuildsTheSameBlocksLower() {
+        QcPlan high = house("house", 2, 2, 2);
+        QcPlan low = high.transformed(0, false, false, 0, -3, 0);
+        assertTrue(low.cells().stream().allMatch(cell -> cell.layer() <= 0), "the moved plan should sit below layer 1");
+        District.Result a = District.build(high);
+        District.Result b = District.build(low);
+        assertTrue(a.problems().isEmpty(), a.problems().toString());
+        assertEquals(a.problems(), b.problems());
+        Map<BlockPos, String> shifted = new java.util.LinkedHashMap<>();
+        a.blocks().forEach((pos, id) -> shifted.put(pos.below(24), id));
+        assertEquals(shifted, b.blocks());
+    }
+
     @Test
     void everyTemplateRoofAndPierBuildsWithoutMissingRoles() {
         for (String template : Templates.names()) {
