@@ -2,7 +2,9 @@ package com.qccore.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.qccore.core.plan.Join;
 import com.qccore.core.plan.PlanCompiler;
+import com.qccore.core.plan.Surroundings;
 import com.qccore.world.QcSurroundings;
 import java.util.Map;
 import net.minecraft.client.Minecraft;
@@ -96,8 +98,10 @@ public final class QcBlockPreview {
 			return;
 		}
 		try {
-			PlanCompiler.Compiled compiled = PlanCompiler.compile(QcClientState.plan, QcClientState.palette, anchor,
-					QcSurroundings.of(QcClientState.nearbyUnits.values(), anchor));
+			Surroundings around = QcSurroundings.of(QcClientState.nearbyUnits.values(), anchor);
+			// the same join the server's apply makes, so the ghost shows the standing part it rebuilds
+			PlanCompiler.Compiled compiled = PlanCompiler.compile(Join.join(QcClientState.plan, around),
+					QcClientState.palette, anchor, around);
 			blocks = compiled.forExport(false);
 			problem = compiled.problems().isEmpty() ? null : compiled.problems().get(0);
 		} catch (RuntimeException e) {

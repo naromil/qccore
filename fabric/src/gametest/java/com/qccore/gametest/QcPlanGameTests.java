@@ -397,6 +397,91 @@ public class QcPlanGameTests implements FabricGameTest {
         }
     }
 
+    /**
+     * T17: a house applied in two parts ends up block for block like the same house applied at once.
+     * The second apply rebuilds the standing west half (same design), so the shared plane, the roof
+     * and the facade join; a house of another design next to it is left standing as it was.
+     */
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void aNewPartJoinsTheStandingPartOfItsBuilding(GameTestHelper ctx) {
+        ServerLevel world = ctx.getLevel();
+        BlockPos split = ctx.absolutePos(BlockPos.ZERO).offset(0, 40, 440);
+        BlockPos whole = split.offset(0, 0, 64);
+        clearIndex(world, split);
+        clearIndex(world, whole);
+        BlockPalette palette = new BlockPalette();
+        Defaults.applyTo(palette);
+        ServerPlayer player = ctx.makeMockServerPlayerInLevel();
+
+        QcResult once = QcPlanService.apply(player, whole, twoStoreyHouse("bricks", 0, 2), palette);
+        QcResult first = QcPlanService.apply(player, split, twoStoreyHouse("bricks", 0, 1), palette);
+        QcResult second = QcPlanService.apply(player, split, twoStoreyHouse("bricks", 1, 2), palette);
+        for (QcResult r : List.of(once, first, second)) {
+            if (!r.ok()) {
+                throw new AssertionError("apply was refused: " + r.message());
+            }
+        }
+        if (!second.message().contains("rebuilt 2 standing unit(s)")) {
+            throw new AssertionError("the second part did not rebuild the first: " + second.message());
+        }
+        for (BlockPos p : BlockPos.betweenClosed(split.offset(-3, 5, -3), split.offset(8 * 2 + 3, 8 * 3 + 6, 8 + 3))) {
+            BlockState got = world.getBlockState(p);
+            BlockState want = world.getBlockState(p.offset(0, 0, 64));
+            if (!got.equals(want)) {
+                throw new AssertionError("two parts differ from one build at +" + p.subtract(split).toShortString()
+                        + ": " + got + " vs " + want);
+            }
+        }
+        QcUnitRecord record = QcUnitIndex.get(world).units(world.dimension().location()).get(split.offset(0, 8, 0));
+        if (record == null || record.part() == 0) {
+            throw new AssertionError("the standing part lost its design signature: " + record);
+        }
+
+        // another design east of the joined house is not rebuilt, and nothing is written into it
+        BlockPos stoneCell = split.offset(8 + 1, 8 + 1, 1);
+        Map<BlockPos, BlockState> before = new java.util.HashMap<>();
+        for (BlockPos p : BlockPos.betweenClosed(split.offset(0, 8, 0), split.offset(8 * 2, 8 * 3, 8))) {
+            before.put(p.immutable(), world.getBlockState(p));
+        }
+        QcResult other = QcPlanService.apply(player, split, twoStoreyHouse("stone_bricks", 2, 3), palette);
+        if (!other.ok() || other.message().contains("rebuilt")) {
+            throw new AssertionError("another design joined or failed: " + other.message());
+        }
+        before.forEach((p, state) -> {
+            if (!world.getBlockState(p).equals(state)) {
+                throw new AssertionError("the other design changed the standing house at +" + p.subtract(split).toShortString());
+            }
+        });
+        if (world.getBlockState(stoneCell).is(Blocks.STONE_BRICKS)) {
+            throw new AssertionError("stone written inside the standing house");
+        }
+        ctx.succeed();
+    }
+
+    /** A two-storey qckit house over cells x0..x1-1 (layers 1 and 2), no road, no decor. */
+    private static QcPlan twoStoreyHouse(String wall, int x0, int x1) {
+        QcPlan plan = new QcPlan();
+        plan.buildings().put("A", new BuildingSpec("house", "s"));
+        BlockChoice style = new BlockChoice(Roles.BUILDING);
+        style.set("frame", "spruce_log");
+        style.set("floor", "spruce_planks");
+        style.set("wall", wall);
+        style.set("glass", "glass");
+        style.set("coping", "stone_brick_stairs");
+        style.set("roof", "dark_oak_stairs");
+        style.set("roof_slab", "dark_oak_slab");
+        style.set("roof_full", "dark_oak_planks");
+        style.set("sill", "stone_brick_slab");
+        style.set("light", "lantern");
+        style.set("door", "spruce_door");
+        plan.styles().put("s", style);
+        for (int x = x0; x < x1; x++) {
+            plan.addUnit(new Cell(x, 1, 0), "A");
+            plan.addUnit(new Cell(x, 2, 0), "A");
+        }
+        return plan;
+    }
+
     /** /qc scan on the applied house, with the index emptied first: it finds the four units, the door and the road. */
     private static void scanFindsTheHouse(ServerLevel world, BlockPos anchor) {
         ResourceLocation dimension = world.dimension().location();

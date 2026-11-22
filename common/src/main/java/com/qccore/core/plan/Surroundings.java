@@ -12,16 +12,25 @@ import java.util.Set;
  * What already stands round a plan, in the plan's own cells: the road cells, the building cells and
  * the doors of the buildings {@code /qc scan} (or an earlier apply) recorded on the same lattice. A
  * plan reads it so a new road joins a standing street instead of ending at its edge, so no new unit is
- * planned in front of a standing door, and so what stands beats what is new: a new plan's outward
- * decoration yields to standing buildings and roads, and nothing new is written into a standing
- * building's cell.
+ * planned in front of a standing door, and so a new plan's outward decoration yields to standing
+ * buildings and roads and nothing new is written into a standing building's cell. The exception is a
+ * standing part of the same building ({@link #parts()}, {@link Join}): the new part may change it, so
+ * both look built at the same time.
  *
  * <p>Registry-free. {@code doors} uses the layer wire bits: <b>bit0 = NORTH, bit1 = EAST, bit2 = SOUTH,
  * bit3 = WEST</b>.
  */
-public record Surroundings(Set<Cell> roads, Map<Cell, Integer> doors, Set<Cell> buildings) {
+public record Surroundings(Set<Cell> roads, Map<Cell, Integer> doors, Set<Cell> buildings, Map<Cell, Part> parts) {
 
     public static final Surroundings NONE = new Surroundings(Set.of(), Map.of(), Set.of());
+
+    /**
+     * A standing building cell an earlier apply recorded: the {@link Join#signature design signature}
+     * of the building it was built as, and its wall/gate flags (layer wire bits). A new building of the
+     * same design that touches it rebuilds it together with itself (see {@link Join}).
+     */
+    public record Part(int signature, int walls, int gates) {
+    }
 
     /** (dx, dz) of the four sides in bit order N, E, S, W. */
     private static final int[][] SIDES = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};
@@ -30,6 +39,12 @@ public record Surroundings(Set<Cell> roads, Map<Cell, Integer> doors, Set<Cell> 
         roads = Collections.unmodifiableSet(new LinkedHashSet<>(roads));
         doors = Collections.unmodifiableMap(new LinkedHashMap<>(doors));
         buildings = Collections.unmodifiableSet(new LinkedHashSet<>(buildings));
+        parts = Collections.unmodifiableMap(new LinkedHashMap<>(parts));
+    }
+
+    /** Standing roads, doors and building cells, with no recorded designs. */
+    public Surroundings(Set<Cell> roads, Map<Cell, Integer> doors, Set<Cell> buildings) {
+        this(roads, doors, buildings, Map.of());
     }
 
     /** Standing roads and doors only, no standing building cells. */
@@ -43,7 +58,8 @@ public record Surroundings(Set<Cell> roads, Map<Cell, Integer> doors, Set<Cell> 
 
     /**
      * The standing building cells the plan does not itself rebuild: a new plan's blocks keep out of
-     * them (their shared planes included), since what stands was there first.
+     * them (their shared planes included). A standing part of the same design as a building it touches
+     * is not kept out: {@link Join#join} puts it into the plan, so it is rebuilt with the new part.
      */
     public Set<Cell> standingBuildings(QcPlan plan) {
         Set<Cell> out = new LinkedHashSet<>();
