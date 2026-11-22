@@ -68,7 +68,9 @@ public final class PlanCompiler {
      * Compiles the plan where it meets what already stands: roads join the standing road cells of
      * {@code around} and keep its doors' approaches free. The export uses {@link Surroundings#NONE}.
      */
-    public static Compiled compile(QcPlan plan, BlockPalette palette, BlockPos anchor, Surroundings around) {
+    public static Compiled compile(QcPlan planned, BlockPalette palette, BlockPos anchor, Surroundings around) {
+        // standing road cells a new road meets are rebuilt with it, so the network looks built at once
+        QcPlan plan = RoadJoin.join(planned, around);
         List<String> problems = new ArrayList<>();
         Map<BlockPos, BlockState> blocks = new LinkedHashMap<>();
 

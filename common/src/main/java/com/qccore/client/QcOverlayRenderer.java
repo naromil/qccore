@@ -346,9 +346,12 @@ public final class QcOverlayRenderer {
 				1.0F, 1.0F, 1.0F, LAYER_OPAQUE_ALPHA);
 	}
 
-	/** A small cube at the anchor and at every unit the server reported. */
+	/** A small cube at the anchor and at every building unit the server reported (road records get none). */
 	private static void drawMarkers(PoseStack matrices, VertexConsumer vertices) {
 		for (QcUnitRecord record : QcClientState.nearbyUnits.values()) {
+			if (!record.isBuilding()) {
+				continue;
+			}
 			drawBox(matrices, vertices, record.origin(), MARKER_SIZE,
 					MARKER_RED, MARKER_GREEN, MARKER_BLUE, LAYER_OPAQUE_ALPHA);
 		}
