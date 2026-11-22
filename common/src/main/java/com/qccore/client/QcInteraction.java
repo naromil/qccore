@@ -53,8 +53,8 @@ public final class QcInteraction {
 	/** How close a reported unit has to be before the anchor adopts its lattice. */
 	private static final double LATTICE_RANGE = 48.0;
 
-	/** Whether the use key was held at the end of the previous tick (multi-point shapes need a fresh press). */
-	private static boolean useHeldLastTick;
+	/** Multi-point shapes take one point per fresh press (see {@link QcUseGate}). */
+	private static final QcUseGate USE_GATE = new QcUseGate();
 
 	/**
 	 * Where the crosshair points, in session unit coordinates. {@code layer} is the layer the editor
@@ -251,11 +251,8 @@ public final class QcInteraction {
 			return;
 		}
 		BuildShape shape = activeShape();
-		if (shape.points() > 1 && useHeldLastTick) {
-			return;
-		}
 		Cell point = target(client);
-		if (point == null) {
+		if (point == null || !USE_GATE.accept(shape.points() > 1)) {
 			return;
 		}
 		QcClientState.points.add(point);
@@ -508,7 +505,7 @@ public final class QcInteraction {
 	/** The keybind pump: world guard, keybinds and the HUD message lifetime. */
 	public static void onClientTick(Minecraft client) {
 		syncDimension(client);
-		useHeldLastTick = client.options.keyUse.isDown();
+		USE_GATE.endTick(client.options.keyUse.isDown());
 		if (QcClientState.messageTicks > 0 && --QcClientState.messageTicks == 0) {
 			QcClientState.message = null;
 		}
