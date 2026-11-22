@@ -9,17 +9,19 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * What already stands round a plan, in the plan's own cells: the road cells and the doors of the
- * buildings {@code /qc scan} (or an earlier apply) recorded on the same lattice. A plan reads it so a
- * new road joins a standing street instead of ending at its edge, and so no new unit is planned in
- * front of a standing door.
+ * What already stands round a plan, in the plan's own cells: the road cells, the building cells and
+ * the doors of the buildings {@code /qc scan} (or an earlier apply) recorded on the same lattice. A
+ * plan reads it so a new road joins a standing street instead of ending at its edge, so no new unit is
+ * planned in front of a standing door, and so what stands beats what is new: a new plan's outward
+ * decoration yields to standing buildings and roads, and nothing new is written into a standing
+ * building's cell.
  *
  * <p>Registry-free. {@code doors} uses the layer wire bits: <b>bit0 = NORTH, bit1 = EAST, bit2 = SOUTH,
  * bit3 = WEST</b>.
  */
-public record Surroundings(Set<Cell> roads, Map<Cell, Integer> doors) {
+public record Surroundings(Set<Cell> roads, Map<Cell, Integer> doors, Set<Cell> buildings) {
 
-    public static final Surroundings NONE = new Surroundings(Set.of(), Map.of());
+    public static final Surroundings NONE = new Surroundings(Set.of(), Map.of(), Set.of());
 
     /** (dx, dz) of the four sides in bit order N, E, S, W. */
     private static final int[][] SIDES = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};
@@ -27,10 +29,41 @@ public record Surroundings(Set<Cell> roads, Map<Cell, Integer> doors) {
     public Surroundings {
         roads = Collections.unmodifiableSet(new LinkedHashSet<>(roads));
         doors = Collections.unmodifiableMap(new LinkedHashMap<>(doors));
+        buildings = Collections.unmodifiableSet(new LinkedHashSet<>(buildings));
+    }
+
+    /** Standing roads and doors only, no standing building cells. */
+    public Surroundings(Set<Cell> roads, Map<Cell, Integer> doors) {
+        this(roads, doors, Set.of());
     }
 
     public boolean isEmpty() {
-        return roads.isEmpty() && doors.isEmpty();
+        return roads.isEmpty() && doors.isEmpty() && buildings.isEmpty();
+    }
+
+    /**
+     * The standing building cells the plan does not itself rebuild: a new plan's blocks keep out of
+     * them (their shared planes included), since what stands was there first.
+     */
+    public Set<Cell> standingBuildings(QcPlan plan) {
+        Set<Cell> out = new LinkedHashSet<>();
+        for (Cell cell : buildings) {
+            if (!plan.hasUnit(cell) && !plan.roads().containsKey(cell)) {
+                out.add(cell);
+            }
+        }
+        return out;
+    }
+
+    /** The standing road cells, on any layer, the plan does not itself use. */
+    public Set<Cell> standingRoads(QcPlan plan) {
+        Set<Cell> out = new LinkedHashSet<>();
+        for (Cell cell : roads) {
+            if (!plan.roads().containsKey(cell) && !plan.hasUnit(cell)) {
+                out.add(cell);
+            }
+        }
+        return out;
     }
 
     /** The standing road cells of one layer the plan does not itself use (a planned cell always wins). */

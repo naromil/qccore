@@ -194,7 +194,19 @@ public final class District {
             }
         }
 
-        // 4. merge: outward decoration yields to neighbours and to the road below head height
+        // standing roads count as road for the yield rules, and standing buildings and doors are kept
+        for (Cell cell : around.standingRoads(plan)) {
+            for (int x = 0; x <= 8; x++) {
+                for (int z = 0; z <= 8; z++) {
+                    roadFloor.computeIfAbsent(RoadKit.key(cell.x() * 8 + x, cell.z() * 8 + z), k -> new HashSet<>()).add(cell.layer() * 8);
+                }
+            }
+        }
+        Set<Cell> standing = around.standingBuildings(plan);
+        Map<BlockPos, String> doorZone = doorZones(made, around);
+
+        // 4. merge: outward decoration yields to neighbours, to the road below head height, to what
+        // already stands and to every door step
         Map<String, Map<Long, Integer>> tops = new HashMap<>();
         for (Map.Entry<String, Building> entry : made.entrySet()) {
             Map<Long, Integer> t = new HashMap<>();
@@ -221,7 +233,8 @@ public final class District {
             Set<BlockPos> doomed = new HashSet<>();
             for (Set<BlockPos> group : b.relief) {
                 for (BlockPos q : group) {
-                    if (b.blocks.containsKey(q) && b.outward.contains(q) && yields(q, b, ch, others, tops, roadFloor)) {
+                    if (b.blocks.containsKey(q) && b.outward.contains(q)
+                            && (yields(q, b, ch, others, tops, roadFloor) || inside(standing, q) || blocksDoor(doorZone, q, ch))) {
                         doomed.addAll(group);
                         break;
                     }
@@ -231,10 +244,13 @@ public final class District {
                 BlockPos p = block.getKey();
                 String s = block.getValue();
                 long col = Building.key(p.getX(), p.getZ());
-                if (doomed.contains(p)) {
+                if (doomed.contains(p) || inside(standing, p)) {
                     continue;
                 }
                 if (b.outward.contains(p)) {
+                    if (blocksDoor(doorZone, p, ch)) {
+                        continue;
+                    }
                     if (others.contains(col) && p.getY() <= otherTop(tops, ch, col)) {
                         continue;
                     }
@@ -260,6 +276,9 @@ public final class District {
             BlockPos p = road.getKey();
             if (out.containsKey(p)) {
                 notes.add("road block at " + p.toShortString() + " gives way to building " + by.get(p));
+                continue;
+            }
+            if (inside(standing, p)) {
                 continue;
             }
             out.put(p, road.getValue());
@@ -327,6 +346,72 @@ public final class District {
                     + " (choose them in the block chooser)");
         }
         return new Result(out, problems, notes, reached, missing);
+    }
+
+    /**
+     * The door steps no outward piece may land on, mapped to who may still put one there: {@code "*"}
+     * for nobody (the walking column of every door, and the whole 3-wide approach of a standing door),
+     * else the name of the door's own building (the sides of its 3-wide approach, so its own door
+     * surround stays while a neighbour's sill or balcony gives way).
+     */
+    static Map<BlockPos, String> doorZones(Map<String, Building> made, Surroundings around) {
+        Map<BlockPos, String> zone = new HashMap<>();
+        for (Map.Entry<String, Building> entry : made.entrySet()) {
+            Building b = entry.getValue();
+            for (Building.Door d : b.doors) {
+                for (int a = 3; a <= 5; a++) {
+                    for (int y = 1; y <= 2; y++) {
+                        BlockPos p = b.out(d.u(), d.side(), a, y, 1);
+                        if (a == 4) {
+                            zone.put(p, "*");
+                        } else {
+                            zone.merge(p, entry.getKey(), (was, now) -> was.equals(now) ? was : "*");
+                        }
+                    }
+                }
+            }
+        }
+        int[][] sides = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}}; // N E S W, the door bit order
+        for (Map.Entry<Cell, Integer> entry : around.doors().entrySet()) {
+            Cell cell = entry.getKey();
+            for (int s = 0; s < 4; s++) {
+                if ((entry.getValue() & (1 << s)) == 0) {
+                    continue;
+                }
+                int dx = sides[s][0], dz = sides[s][1];
+                for (int a = 3; a <= 5; a++) {
+                    int x = cell.x() * 8 + (dx == 0 ? a : dx > 0 ? 9 : -1);
+                    int z = cell.z() * 8 + (dz == 0 ? a : dz > 0 ? 9 : -1);
+                    for (int y = 1; y <= 2; y++) {
+                        zone.put(new BlockPos(x, cell.layer() * 8 + y, z), "*");
+                    }
+                }
+            }
+        }
+        return zone;
+    }
+
+    private static boolean blocksDoor(Map<BlockPos, String> zone, BlockPos p, String ch) {
+        String owner = zone.get(p);
+        return owner != null && (owner.equals("*") || !owner.equals(ch));
+    }
+
+    /** Whether {@code p} lies in the 9x9x9 box (shared planes included) of any of {@code cells}. */
+    static boolean inside(Set<Cell> cells, BlockPos p) {
+        if (cells.isEmpty()) {
+            return false;
+        }
+        int x = p.getX(), y = p.getY(), z = p.getZ();
+        for (int cx = Math.floorDiv(x - 1, 8); cx <= Math.floorDiv(x, 8); cx++) {
+            for (int cy = Math.floorDiv(y - 1, 8); cy <= Math.floorDiv(y, 8); cy++) {
+                for (int cz = Math.floorDiv(z - 1, 8); cz <= Math.floorDiv(z, 8); cz++) {
+                    if (cells.contains(new Cell(cx, cy, cz))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private static int otherTop(Map<String, Map<Long, Integer>> tops, String ch, long col) {

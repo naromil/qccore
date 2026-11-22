@@ -26,6 +26,7 @@ public final class QcSurroundings {
         }
         Set<Cell> roads = new LinkedHashSet<>();
         Map<Cell, Integer> doors = new LinkedHashMap<>();
+        Set<Cell> buildings = new LinkedHashSet<>();
         for (QcUnitRecord record : records) {
             Cell cell = cell(record.origin(), anchor);
             if (cell == null) {
@@ -33,11 +34,14 @@ public final class QcSurroundings {
             }
             if (record.kind() == QcUnitRecord.ROAD) {
                 roads.add(cell);
-            } else if (record.doors() != 0) {
-                doors.put(cell, record.doors() & 0xF);
+            } else {
+                buildings.add(cell);
+                if (record.doors() != 0) {
+                    doors.put(cell, record.doors() & 0xF);
+                }
             }
         }
-        return roads.isEmpty() && doors.isEmpty() ? Surroundings.NONE : new Surroundings(roads, doors);
+        return roads.isEmpty() && buildings.isEmpty() ? Surroundings.NONE : new Surroundings(roads, doors, buildings);
     }
 
     /** The plan cell whose origin is {@code origin}, or {@code null} when it is off the plan's lattice. */

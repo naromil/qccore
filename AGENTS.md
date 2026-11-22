@@ -194,13 +194,21 @@ Server/client split:
   cells a plan's apply laid or `/qc scan` found; apply keeps a building record standing at a road cell) and `doors` (side bits), stored as `k`/`d` only when non-zero so older records read
   back as door-less buildings. Road records are pushed (the block preview needs them) but never pruned,
   drawn as units, targeted or walked by align: client code that wants building units checks `isBuilding()`.
-- Plans read the index through `core/plan/Surroundings` (registry-free: standing road cells + door sides in
-  plan cells), built from records on the plan's lattice by `world/QcSurroundings.of(records, anchor)`: the
+- Plans read the index through `core/plan/Surroundings` (registry-free: standing road cells, standing building
+  cells + door sides in plan cells), built from records on the plan's lattice by `world/QcSurroundings.of(records, anchor)`: the
   server's apply uses the dimension's whole index, the client's block preview the pushed records, the `.nbt`
   export none. `RoadKit.build/networkArea(cells, joined, ...)` open the arms towards joined cells, measure lanes
   across both and pave the mouths and plaza posts, never inside a joined cell; `District.build(plan, around)`
   also keeps scanned doors' 3x3 approaches free of road furniture. The units/template tools refuse cells in
   `doorFronts()`, and an index push with an empty plan re-snaps the anchor (`adoptNearbyLattice`, roads included).
+- **What stands beats what is new** (review #30/#31, 2026-11-21). In `District.build(plan, around)`: no block of
+  the plan (building or road) is written inside a standing building cell's 9x9x9 box, shared planes included
+  (`Surroundings.standingBuildings` leaves out cells the plan itself rebuilds); standing road cells join the
+  road-floor columns, so outward decoration yields over them below head height as over a planned road; and
+  `District.doorZones` keeps every door step free of outward pieces: the walking column (a 4, y 1..2) of every
+  door for everyone, the 3-wide approach (a 3..5) of a standing door for everyone, and that of a planned door
+  for every building but its own (its own door surround stays). A relief group that touches any of these goes
+  whole.
 - `/qc scan [radius]` = `QcScanService` (server, read-only towards the world) over the registry-free
   `core/scan/QcScanner`: it reads the box (radius 8..64, 16 below to 40 above) once, picks the one of the 512
   grid offsets that explains the most building units (all 12 framework edges built, terrain blocks counting as
