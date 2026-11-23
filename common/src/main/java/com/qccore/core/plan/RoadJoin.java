@@ -1,5 +1,6 @@
 package com.qccore.core.plan;
 
+import com.qccore.core.qc.BlockChoice;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -19,11 +20,16 @@ import java.util.Set;
  *
  * <p>{@link #join} adds every touching standing road cell to the plan as a road cell, so the
  * compiler rebuilds it with the new one (paving, furniture, medallion, and the road headroom clear
- * that takes the old furniture away). A standing record does not say which road style it was laid
- * with, so a rebuilt cell takes the style of the planned road cell it touches (the first in x, z
- * order when several touch it). Registry-free.
+ * that takes the old furniture away). A rebuilt cell keeps its own road style, like a fence keeps its
+ * wood when a new fence joins it: only how it connects changes (user, 2026-11-22). Its style comes
+ * from its record ({@link Surroundings#roadStyles()}); a cell whose record has none (laid before road
+ * styles were recorded, or found by {@code /qc scan}) takes the style of the planned road cell it
+ * touches (the first in x, z order when several touch it). Registry-free.
  */
 public final class RoadJoin {
+
+    /** Name prefix of a standing cell's own road style when the plan has no style with its blocks. */
+    static final String STANDING = "standing road ";
 
     private RoadJoin() {
     }
@@ -35,11 +41,35 @@ public final class RoadJoin {
             return plan;
         }
         QcPlan out = plan.copy();
-        out.roads().putAll(touching);
+        for (Map.Entry<Cell, String> entry : touching.entrySet()) {
+            BlockChoice own = around.roadStyles().get(entry.getKey());
+            out.roads().put(entry.getKey(), own == null ? entry.getValue() : styleName(out, own));
+        }
         return out;
     }
 
-    /** Standing road cell -> the road style it is rebuilt with. */
+    /**
+     * The name of {@code style} in the plan: a plan style with exactly these blocks if there is one,
+     * otherwise a new {@code standing road N} style added to it.
+     */
+    static String styleName(QcPlan plan, BlockChoice style) {
+        for (Map.Entry<String, BlockChoice> entry : plan.styles().entrySet()) {
+            if (entry.getValue().equals(style)) {
+                return entry.getKey();
+            }
+        }
+        int n = 1;
+        while (plan.styles().containsKey(STANDING + n)) {
+            n++;
+        }
+        plan.styles().put(STANDING + n, style.copy());
+        return STANDING + n;
+    }
+
+    /**
+     * Standing road cell -> the style of the planned road cell it touches, which it is rebuilt with
+     * when its record names no road style of its own.
+     */
     public static Map<Cell, String> touching(QcPlan plan, Surroundings around) {
         Map<Cell, String> out = new LinkedHashMap<>();
         if (plan.roads().isEmpty() || around.roads().isEmpty()) {

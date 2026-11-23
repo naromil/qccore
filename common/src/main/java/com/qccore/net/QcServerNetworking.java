@@ -18,7 +18,6 @@ import com.qccore.world.QcPlanService;
 import com.qccore.world.QcUndoService;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.resources.ResourceLocation;
@@ -284,13 +283,6 @@ public final class QcServerNetworking {
         }
         nearby.sort(Comparator.comparingDouble(record -> record.origin().distSqr(center)));
 
-        ListTag list = new ListTag();
-        for (int i = 0; i < nearby.size() && i < PUSH_LIMIT; i++) {
-            list.add(nearby.get(i).toNbt());
-        }
-
-        CompoundTag tag = new CompoundTag();
-        tag.put("units", list);
-        return tag;
+        return QcUnitRecord.writeAll(nearby.subList(0, Math.min(nearby.size(), PUSH_LIMIT)));
     }
 }

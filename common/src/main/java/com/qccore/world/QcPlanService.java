@@ -9,6 +9,7 @@ import com.qccore.core.plan.ComponentMask;
 import com.qccore.core.plan.Join;
 import com.qccore.core.plan.PlanCompiler;
 import com.qccore.core.plan.QcPlan;
+import com.qccore.core.plan.RoadJoin;
 import com.qccore.core.plan.Surroundings;
 import com.qccore.core.qc.District;
 import org.slf4j.Logger;
@@ -98,17 +99,25 @@ public final class QcPlanService {
                 index.put(dimension, origin, QcUnitRecord.of(origin, entry.getValue(), part));
             }
         }
-        // Road cells are recorded too, so a later plan joins them without a /qc scan. A building
-        // record already standing at a road cell's origin is kept: the road never clears a footprint,
-        // so that building is still there (and the prune drops it once it is mined).
-        for (Cell cell : plan.roads().keySet()) {
-            BlockPos origin = PlanCompiler.origin(anchor, cell);
+        // Road cells are recorded too, with their road style, so a later plan joins them without a
+        // /qc scan and a later road rebuilds them in their own style. The standing road cells this
+        // road rebuilt (RoadJoin) are recorded again, so one that had no style yet keeps the style it
+        // now stands in. A building record already standing at a road cell's origin is kept: the road
+        // never clears a footprint, so that building is still there (and the prune drops it once it
+        // is mined).
+        QcPlan roads = RoadJoin.join(plan, around);
+        for (Map.Entry<Cell, String> road : roads.roads().entrySet()) {
+            BlockPos origin = PlanCompiler.origin(anchor, road.getKey());
             QcUnitRecord standing = index.units(dimension).get(origin);
             if (standing != null && standing.isBuilding()) {
                 continue;
             }
+            QcUnitRecord laid = QcUnitRecord.road(origin, roads.styles().get(road.getValue()));
+            if (laid.equals(standing)) {
+                continue;
+            }
             previous.put(origin, standing);
-            index.put(dimension, origin, new QcUnitRecord(origin, 0, 0, QcUnitRecord.ROAD, 0));
+            index.put(dimension, origin, laid);
         }
         QcUndoService.push(player, new QcUndoService.Entry(dimension, undo, previous));
 

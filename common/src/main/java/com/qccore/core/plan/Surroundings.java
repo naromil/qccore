@@ -1,6 +1,7 @@
 package com.qccore.core.plan;
 
 import com.qccore.core.UnitPos;
+import com.qccore.core.qc.BlockChoice;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -15,12 +16,14 @@ import java.util.Set;
  * planned in front of a standing door, and so a new plan's outward decoration yields to standing
  * buildings and roads and nothing new is written into a standing building's cell. The exception is a
  * standing part of the same building ({@link #parts()}, {@link Join}): the new part may change it, so
- * both look built at the same time.
+ * both look built at the same time. {@link #roadStyles()} holds the road style a standing road cell
+ * was laid with, when its record knows it, so a new road that meets it rebuilds it in that style.
  *
  * <p>Registry-free. {@code doors} uses the layer wire bits: <b>bit0 = NORTH, bit1 = EAST, bit2 = SOUTH,
  * bit3 = WEST</b>.
  */
-public record Surroundings(Set<Cell> roads, Map<Cell, Integer> doors, Set<Cell> buildings, Map<Cell, Part> parts) {
+public record Surroundings(Set<Cell> roads, Map<Cell, Integer> doors, Set<Cell> buildings, Map<Cell, Part> parts,
+        Map<Cell, BlockChoice> roadStyles) {
 
     public static final Surroundings NONE = new Surroundings(Set.of(), Map.of(), Set.of());
 
@@ -40,6 +43,12 @@ public record Surroundings(Set<Cell> roads, Map<Cell, Integer> doors, Set<Cell> 
         doors = Collections.unmodifiableMap(new LinkedHashMap<>(doors));
         buildings = Collections.unmodifiableSet(new LinkedHashSet<>(buildings));
         parts = Collections.unmodifiableMap(new LinkedHashMap<>(parts));
+        roadStyles = Collections.unmodifiableMap(new LinkedHashMap<>(roadStyles));
+    }
+
+    /** Standing roads, doors, building cells and recorded designs, with no recorded road styles. */
+    public Surroundings(Set<Cell> roads, Map<Cell, Integer> doors, Set<Cell> buildings, Map<Cell, Part> parts) {
+        this(roads, doors, buildings, parts, Map.of());
     }
 
     /** Standing roads, doors and building cells, with no recorded designs. */

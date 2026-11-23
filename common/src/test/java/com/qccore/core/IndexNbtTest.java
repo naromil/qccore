@@ -1,15 +1,19 @@
 package com.qccore.core;
 
+import com.qccore.core.qc.BlockChoice;
+import com.qccore.core.qc.Roles;
 import com.qccore.world.QcUnitIndex;
 import com.qccore.world.QcUnitRecord;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.resources.ResourceLocation;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -97,6 +101,42 @@ class IndexNbtTest {
         assertEquals(-123456789, read.units(OVERWORLD).get(part).part());
         assertEquals(0, read.units(OVERWORLD).get(plain).part());
         assertEquals(new QcUnitRecord(plain, 0, 0).toNbt(), read.units(OVERWORLD).get(plain).toNbt(), "no p key when there is no design");
+    }
+
+    private static BlockChoice roadStyle(String paving) {
+        BlockChoice style = new BlockChoice(Roles.ROAD);
+        for (int lane = 1; lane <= 4; lane++) {
+            style.set("floor" + lane, "minecraft:" + paving);
+        }
+        style.set("over1", "minecraft:oak_fence");
+        return style;
+    }
+
+    @Test
+    void anAppliedRoadKeepsItsStyle() {
+        QcUnitIndex index = new QcUnitIndex();
+        BlockPos laid = new BlockPos(0, 64, 0);
+        BlockPos old = new BlockPos(8, 64, 0);
+        index.put(OVERWORLD, laid, QcUnitRecord.road(laid, roadStyle("stone_bricks")));
+        index.put(OVERWORLD, old, new QcUnitRecord(old, 0, 0, QcUnitRecord.ROAD, 0));
+
+        QcUnitIndex read = QcUnitIndex.read(index.save(new CompoundTag()));
+        assertEquals(roadStyle("stone_bricks"), read.units(OVERWORLD).get(laid).road());
+        assertNull(read.units(OVERWORLD).get(old).road(), "a road laid before styles were recorded has none");
+        assertFalse(read.units(OVERWORLD).get(old).toNbt().contains("r"));
+    }
+
+    @Test
+    void thePushWritesEachRoadStyleOnce() {
+        List<QcUnitRecord> records = List.of(
+                QcUnitRecord.road(new BlockPos(0, 64, 0), roadStyle("stone_bricks")),
+                QcUnitRecord.road(new BlockPos(8, 64, 0), roadStyle("stone_bricks")),
+                QcUnitRecord.road(new BlockPos(16, 64, 0), roadStyle("gravel")),
+                new QcUnitRecord(new BlockPos(0, 64, 8), 0, 0, QcUnitRecord.ROAD, 0),
+                new QcUnitRecord(new BlockPos(0, 64, 16), 0b0010, 0, QcUnitRecord.BUILDING, 0, 42));
+        CompoundTag pushed = QcUnitRecord.writeAll(records);
+        assertEquals(2, pushed.getList("styles", 10).size());
+        assertEquals(records, QcUnitRecord.readAll(pushed));
     }
 
     @Test

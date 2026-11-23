@@ -8,8 +8,6 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
@@ -53,9 +51,7 @@ public final class QCCoreClient {
 		}
 		QcInteraction.syncDimension(client);
 		Map<BlockPos, QcUnitRecord> records = new HashMap<>();
-		ListTag list = units.getList("units", Tag.TAG_COMPOUND);
-		for (int i = 0; i < list.size(); i++) {
-			QcUnitRecord record = QcUnitRecord.fromNbt(list.getCompound(i));
+		for (QcUnitRecord record : QcUnitRecord.readAll(units)) {
 			records.put(record.origin(), record);
 		}
 		QcClientState.nearbyUnits.clear();

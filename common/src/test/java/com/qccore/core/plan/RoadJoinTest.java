@@ -78,4 +78,30 @@ class RoadJoinTest {
         QcPlan none = roads("lane", new Cell(5, 1, 5));
         assertSame(none, RoadJoin.join(none, around));
     }
+
+    @Test
+    void aStandingRoadKeepsItsOwnStyleWhenANewRoadOfAnotherStyleMeetsIt() {
+        Cell a = new Cell(0, 1, 0);
+        Cell b = new Cell(1, 1, 0);
+        Cell c = new Cell(1, 1, 1);
+        // laid at once: a in "lane" style, b and c in "street"
+        QcPlan mixed = roads("street", b, c);
+        mixed.roads().put(a, "lane");
+        Map<BlockPos, String> once = District.build(mixed).blocks();
+
+        Map<BlockPos, String> first = apply(Map.of(), roads("lane", a), Surroundings.NONE);
+        Surroundings standing = new Surroundings(Set.of(a), Map.of(), Set.of(), Map.of(), Map.of(a, hedged("x")));
+        assertEquals(once, apply(first, roads("street", b, c), standing));
+    }
+
+    @Test
+    void aStandingStyleThePlanLacksIsAddedUnderItsOwnName() {
+        Cell standingCell = new Cell(1, 1, 0);
+        BlockChoice gravel = hedged("gravel_");
+        Surroundings around = new Surroundings(Set.of(standingCell), Map.of(), Set.of(), Map.of(), Map.of(standingCell, gravel));
+        QcPlan joined = RoadJoin.join(roads("street", new Cell(0, 1, 0)), around);
+        String name = joined.roads().get(standingCell);
+        assertEquals(RoadJoin.STANDING + 1, name);
+        assertEquals(gravel, joined.styles().get(name));
+    }
 }
