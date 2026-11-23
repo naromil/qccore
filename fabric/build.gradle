@@ -26,3 +26,12 @@ processResources {
 		expand "version": version
 	}
 }
+
+// The gametests write into a real world (blocks and the qccore_units index) at fixed spots, and
+// clearRunDirectory leaves build/run/gameTest/world in place, so a second run in the same checkout
+// started on the first run's buildings and the T17 join test failed. Every run starts from a new world.
+tasks.named("runGameTest") {
+	doFirst {
+		delete file("build/run/gameTest/world")
+	}
+}
