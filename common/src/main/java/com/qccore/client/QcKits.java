@@ -61,6 +61,11 @@ public final class QcKits {
 		}
 	}
 
+	/** Whether saving under {@code rawName} would replace a kit file. */
+	public static boolean exists(String rawName) {
+		return Files.exists(dir().resolve(QcSchematics.normaliseName(rawName) + SUFFIX));
+	}
+
 	/** Writes one style as a kit and returns the file. */
 	public static Path save(String rawName, BlockChoice style) {
 		JsonObject root = new JsonObject();

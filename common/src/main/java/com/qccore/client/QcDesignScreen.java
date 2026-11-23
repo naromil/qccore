@@ -138,7 +138,7 @@ public class QcDesignScreen extends Screen {
 		})).tip("Drop this building's overrides"));
 		this.addRenderableWidget(new Chip(this.left + 6 + (inner - 2) / 2, y, (inner - 2) / 2, CHIP_H, "Blocks…", () -> {
 			commitFields();
-			this.minecraft.setScreen(new QcBlockChooserScreen(this));
+			this.minecraft.setScreen(new QcBlockChooserScreen(this, spec().style));
 		}).accent(QcUi.OK).tip("Choose the blocks of this style"));
 
 		// 4. Facades
@@ -210,8 +210,10 @@ public class QcDesignScreen extends Screen {
 	/**
 	 * One undoable edit of a planned building, or a plain change of the design new buildings start
 	 * from; the text fields then show the result, so closing the screen does not write stale text back.
+	 * Text typed but not yet committed is committed first, so a click elsewhere does not throw it away.
 	 */
 	private void change(BooleanSupplier action) {
+		commitFields();
 		if (QcClientState.activeBuilding() != null) {
 			QcInteraction.editFromScreen(action);
 			QcClientState.design = QcClientState.activeBuilding().copy();

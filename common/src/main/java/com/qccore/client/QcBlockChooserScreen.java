@@ -50,6 +50,7 @@ public class QcBlockChooserScreen extends Screen {
 	private static final int LEFT_W = 132;
 
 	private final Screen parent;
+	private final QcConfirm confirm = new QcConfirm();
 	private String style;
 	private BlockChoice work;
 	private boolean allRoles;
@@ -77,8 +78,19 @@ public class QcBlockChooserScreen extends Screen {
 	private int[] viewRect;
 
 	public QcBlockChooserScreen(Screen parent) {
+		this(parent, null);
+	}
+
+	/**
+	 * Opens on {@code style} when the plan has it (the design screen's "Blocks…" means that
+	 * building's style), else on the style the chooser showed last.
+	 */
+	public QcBlockChooserScreen(Screen parent, String style) {
 		super(Component.literal("QC block chooser"));
 		this.parent = parent;
+		if (style != null && QcClientState.plan.styles().containsKey(style)) {
+			QcClientState.chooserStyle = style;
+		}
 	}
 
 	@Override
@@ -340,6 +352,7 @@ public class QcBlockChooserScreen extends Screen {
 		this.work = QcClientState.plan.styles().get(name).copy();
 		this.page = 0;
 		this.footer = "";
+		this.confirm.reset();
 		rebuild();
 	}
 
@@ -347,6 +360,13 @@ public class QcBlockChooserScreen extends Screen {
 		String name = this.newStyle.getValue().trim();
 		if (name.isEmpty()) {
 			this.footer = "type a name for the new style";
+			this.footerError = true;
+			return;
+		}
+		BlockChoice existing = QcClientState.plan.styles().get(name);
+		if (existing != null && !existing.kind().equals(kind)) {
+			// a road tool or decor pointing at a building style (or the reverse) would build nonsense
+			this.footer = "a " + existing.kind() + " style named " + name + " exists; pick another name";
 			this.footerError = true;
 			return;
 		}
@@ -365,6 +385,8 @@ public class QcBlockChooserScreen extends Screen {
 		this.style = name;
 		this.work = QcClientState.plan.styles().get(name).copy();
 		this.allRoles = true;
+		this.footer = existing != null ? kind + " style " + name + " already exists; selected it" : "";
+		this.footerError = false;
 		rebuild();
 	}
 
@@ -420,8 +442,15 @@ public class QcBlockChooserScreen extends Screen {
 		}
 		storeFields();
 		commit();
+		String raw = this.kitName.getValue();
+		String saved = QcSchematics.normaliseName(raw);
+		if (QcKits.exists(raw) && !this.confirm.confirm("kit:" + saved)) {
+			this.footer = "kit " + saved + " exists: click Save again to replace it with " + this.style + "'s blocks";
+			this.footerError = true;
+			return;
+		}
 		try {
-			this.footer = "saved " + QcKits.save(this.kitName.getValue(), this.work).getFileName();
+			this.footer = "saved " + QcKits.save(raw, this.work).getFileName();
 			this.footerError = false;
 			rebuild();
 		} catch (RuntimeException e) {
