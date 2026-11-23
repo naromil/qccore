@@ -32,6 +32,7 @@ public class QcConfigScreen extends Screen {
 	private static final int ROW_HEIGHT = 16;
 	private static final int RESIDUE_WIDTH = 18;
 
+	private final Screen parent;
 	private final List<IdRow> idRows = new ArrayList<>();
 	private final List<ComponentRow> componentRows = new ArrayList<>();
 	private EditBox residueA;
@@ -44,7 +45,13 @@ public class QcConfigScreen extends Screen {
 	private int right;
 
 	public QcConfigScreen() {
+		this(null);
+	}
+
+	/** @param parent the screen Done and Esc return to, or {@code null} for the world */
+	public QcConfigScreen(Screen parent) {
 		super(Component.translatable("qccore.screen.components"));
+		this.parent = parent;
 	}
 
 	@Override
@@ -54,6 +61,13 @@ public class QcConfigScreen extends Screen {
 
 	@Override
 	protected void init() {
+		// a re-init (back from Choose…/Load layout…, window resize) rebuilds the fields: keep what was typed
+		List<String> typedIds = new ArrayList<>();
+		for (IdRow row : this.idRows) {
+			typedIds.add(row.field().getValue());
+		}
+		String[] typedResidues = this.residueA == null ? null
+				: new String[]{this.residueA.getValue(), this.residueB.getValue(), this.residueC.getValue()};
 		this.idRows.clear();
 		this.componentRows.clear();
 		this.left = this.width / 2 - COLUMN - 3;
@@ -73,7 +87,16 @@ public class QcConfigScreen extends Screen {
 		this.residueA = residueField(this.left + FIELD_X + 50, QcClientState.alignA, "a: x residue (0-7)");
 		this.residueB = residueField(this.left + FIELD_X + 74, QcClientState.alignB, "b: y residue (0-7)");
 		this.residueC = residueField(this.left + FIELD_X + 98, QcClientState.alignC, "c: z residue (0-7)");
+		if (typedResidues != null && this.latticeSet) {
+			this.residueA.setValue(typedResidues[0]);
+			this.residueB.setValue(typedResidues[1]);
+			this.residueC.setValue(typedResidues[2]);
+		}
 		updateResidueVisibility();
+		for (int i = 0; i < typedIds.size() && i < this.idRows.size(); i++) {
+			this.idRows.get(i).field().setValue(typedIds.get(i));
+			this.idRows.get(i).field().moveCursorToStart();
+		}
 
 		addComponentRow("inner wall", palette.innerWall(), 0);
 		addComponentRow("gate", palette.gate(), 1);
@@ -230,6 +253,11 @@ public class QcConfigScreen extends Screen {
 		applyLatticeSetting();
 		QcClientState.changed();
 		onClose();
+	}
+
+	@Override
+	public void onClose() {
+		this.minecraft.setScreen(this.parent);
 	}
 
 	/** Replaces the plan's units with {@code file} (an undoable step) and adopts the palette the import configured. */

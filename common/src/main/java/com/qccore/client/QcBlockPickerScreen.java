@@ -95,6 +95,9 @@ public class QcBlockPickerScreen extends Screen {
 		}));
 		this.addRenderableWidget(new Chip(this.gridLeft, this.height - 20, 70, 17, "Cancel", this::onClose));
 		filter();
+		// a smaller window holds fewer blocks per page: stay on a page that still exists
+		int perPage = this.columns * this.rows;
+		this.page = Math.min(this.page, Math.max(0, (this.matches.size() - 1) / perPage));
 	}
 
 	private void filter() {

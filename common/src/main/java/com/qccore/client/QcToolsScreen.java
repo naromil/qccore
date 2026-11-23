@@ -216,7 +216,7 @@ public class QcToolsScreen extends Screen {
 		}).tip("Block choices per style, saved and loaded as kits"));
 		this.addRenderableWidget(new Chip(this.right + 8 + 2 * third, y, third, CHIP_H, "Lattice", () -> {
 			commit();
-			this.minecraft.setScreen(new QcConfigScreen());
+			this.minecraft.setScreen(new QcConfigScreen(this));
 		}).tip("The lattice, layouts and the legacy QCSimple palette (key I)"));
 
 		// 8. Footer
