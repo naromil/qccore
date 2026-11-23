@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -70,12 +71,16 @@ public final class QcBuildService {
             return new QcResult(false, "the layout does not fit inside this world's height (y " + minY(positions) + ".." + maxY(positions) + ")");
         }
 
-        apply(world, anchor, layers, blockMap);
+        ResourceLocation dimension = world.dimension().location();
+        Map<BlockPos, BlockState> undo = new LinkedHashMap<>();
+        Map<BlockPos, QcUnitRecord> previous = new LinkedHashMap<>();
+        apply(world, anchor, layers, blockMap, undo, previous);
+        QcUndoService.push(player, new QcUndoService.Entry(dimension, undo, previous));
 
         int units = layers.unitCount();
         int layersUsed = layers.layerKeys().size();
-        ResourceLocation dimension = world.dimension().location();
-        String message = "built " + units + " QC unit(s) on " + layersUsed + " layer(s) at " + anchor.toShortString();
+        String message = "built " + units + " QC unit(s) on " + layersUsed + " layer(s) at " + anchor.toShortString()
+                + " (/qc undo reverts it)";
         LOGGER.info("qccore: {} built {} units at {} in {}", player.getName().getString(), units, anchor, dimension);
         return new QcResult(true, message);
     }
@@ -87,14 +92,27 @@ public final class QcBuildService {
     }
 
     static void apply(ServerLevel world, BlockPos anchor, UnitLayers layers, Map<BlockPos, BlockState> blockMap) {
-        QcWorldOps.clearFootprint(world, origins(anchor, layers));
-        QcWorldOps.placeBlocks(world, blockMap);
+        apply(world, anchor, layers, blockMap, null, null);
+    }
+
+    /**
+     * {@link #apply(ServerLevel, BlockPos, UnitLayers, Map)} recording, for {@link QcUndoService}, every
+     * overwritten block state into {@code undo} and every replaced index record (null = none) into
+     * {@code previous}; either may be null. A position or origin already recorded keeps its first value.
+     */
+    static void apply(ServerLevel world, BlockPos anchor, UnitLayers layers, Map<BlockPos, BlockState> blockMap,
+            Map<BlockPos, BlockState> undo, Map<BlockPos, QcUnitRecord> previous) {
+        QcWorldOps.clearFootprint(world, origins(anchor, layers), Set.of(), Set.of(), undo);
+        QcWorldOps.placeBlocks(world, blockMap, undo);
 
         QcUnitIndex index = QcUnitIndex.get(world);
         ResourceLocation dimension = world.dimension().location();
         for (int dy : layers.layerKeys()) {
             for (Map.Entry<UnitPos, QcUnit> unitEntry : layers.peekLayer(dy).entrySet()) {
                 BlockPos origin = anchor.offset(unitEntry.getKey().x() * 8, dy * 8, unitEntry.getKey().z() * 8);
+                if (previous != null && !previous.containsKey(origin)) {
+                    previous.put(origin, index.units(dimension).get(origin));
+                }
                 index.put(dimension, origin, QcUnitRecord.of(origin, unitEntry.getValue()));
             }
         }

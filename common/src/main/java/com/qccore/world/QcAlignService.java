@@ -82,6 +82,16 @@ public final class QcAlignService {
             }
         }
 
+        // A building applied from a plan is a qckit building: rebuilding it from its wall/gate flags
+        // with the legacy palette would replace its whole design (and drop the signature later parts
+        // join on). Only legacy-built units are moved.
+        for (QcUnitRecord record : building.values()) {
+            if (record.part() != 0) {
+                return new QcResult(false, "this building was applied from a plan; align only moves units built with the legacy "
+                        + "palette (/qc build), and would replace its design. Plan it again on the new lattice instead");
+            }
+        }
+
         BlockPos oldAnchor = anchor(building);
         int dx = Alignment.nearestDelta(oldAnchor.getX(), a);
         int dy = Alignment.nearestDelta(oldAnchor.getY(), b);
@@ -121,15 +131,19 @@ public final class QcAlignService {
 
         // The old cells have to go before the rebuild writes the new ones, so nothing of the old
         // building survives next to it.
-        QcWorldOps.clearFootprint(world, building.keySet());
-        QcBuildService.apply(world, newAnchor, layers, blockMap);
+        // Recorded like a plan apply, so /qc undo puts the old building back (blocks and records).
+        Map<BlockPos, BlockState> undo = new LinkedHashMap<>();
+        Map<BlockPos, QcUnitRecord> previous = new LinkedHashMap<>(building);
+        QcWorldOps.clearFootprint(world, building.keySet(), Set.of(), Set.of(), undo);
+        QcBuildService.apply(world, newAnchor, layers, blockMap, undo, previous);
         for (BlockPos oldOrigin : building.keySet()) {
             index.remove(dimension, oldOrigin);
         }
+        QcUndoService.push(player, new QcUndoService.Entry(dimension, undo, previous));
 
         int moved = building.size();
         String message = "moved " + moved + " QC unit(s) by (" + dx + ", " + dy + ", " + dz + ") to align to (8x+" + a
-                + ", 8y+" + b + ", 8z+" + c + ")";
+                + ", 8y+" + b + ", 8z+" + c + ") (/qc undo reverts it)";
         LOGGER.info("qccore: {} {}", player.getName().getString(), message);
         return new QcResult(true, message);
     }

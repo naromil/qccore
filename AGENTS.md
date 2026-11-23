@@ -172,8 +172,10 @@ Server/client split:
   hooks above; `QCCore` (common) only holds `MOD_ID`, `LOGGER`, `id(String)`.
 - `QcBuildService.build` validates, then clears the footprint, writes the layout and registers one `QcUnitIndex`
   record per unit. `QcAlignService.align` is creative-gated, prunes, BFS-walks the connected building over
-  `origin.offset(dir, 8)` (cap 4096), clears the *old* footprint before rebuilding at the shifted anchor and re-keys
-  the records. Both return `QcResult(ok, message)`, both run on the server thread - the loader glue hops onto it
+  `origin.offset(dir, 8)` (cap 4096), refuses a building with any plan-applied cell (`part != 0`: rebuilding a qckit
+  building from flags with the legacy palette would replace its design), clears the *old* footprint before rebuilding
+  at the shifted anchor and re-keys the records. Both record their blocks and records in `QcUndoService` like a plan
+  apply, so `/qc undo` reverts a legacy build or an align. Both return `QcResult(ok, message)`, both run on the server thread - the loader glue hops onto it
   (`server.execute(...)` on Fabric, `consumerMainThread` on Forge), and onto the client thread for S2C packets.
 - `QcWorldOps` is the **only world-write seam**: `clearFootprint` (9x9x9 cell plus a 2-block shell outside every
   exposed side and top face, never below the floor; the shell clears only natural terrain (`QcWorldOps.natural`) and
@@ -425,7 +427,7 @@ Paths are relative to `common/src/main/java/com/qccore/`, except where a project
 | File | Role |
 |---|---|
 | `world/QcBuildService.java` | validates a build (creative, non-empty, <= 4096 units, `layer >= 1`, framework configured, component sizes, height fit) then applies it |
-| `world/QcAlignService.java` | BFS over the connected building, `Alignment.nearestDelta` per axis, clears the old footprint, rebuilds at the shifted anchor, re-keys the index |
+| `world/QcAlignService.java` | BFS over the connected building, refuses plan-applied buildings, `Alignment.nearestDelta` per axis, clears the old footprint (recorded for undo), rebuilds at the shifted anchor, re-keys the index |
 | `world/QcWorldOps.java` | the only world-write seam: `clearFootprint` (cell + 2-block natural-terrain shell, sides and top), `placeBlocks`, `fits`, with `Block.UPDATE_ALL \| Block.UPDATE_KNOWN_SHAPE` |
 | `world/QcUnitIndex.java` | the `qccore_units` `SavedData`: per-dimension `BlockPos -> QcUnitRecord`; `prune` drops records whose origin block is air |
 | `core/UnitExporter.java` | the export walk; owns the component call order and the `LinkedHashMap` block map |
@@ -458,7 +460,7 @@ Mojang names), so anything touching `BuiltInRegistries.BLOCK` is a gametest inst
 | Suite | Files | Covers |
 |---|---|---|
 | JUnit, 44 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest`, `plan/BuildShapeTest`, `plan/QcPlanTest`, `plan/RoadKitTest`, `plan/RoadJoinTest`, `qc/DistrictTest`, `net/PlanRequestDecodeTest`, `client/QcHistoryTest`, `client/QcRequestsTest`, `client/QcUseGateTest` | the qckit port: a house's frame/floor/door/road/roof, every template x roof x pier kind builds with no missing role, unchosen roles reported together, fallbacks and optional roles, partition overrides (open = gate flag alone), shared planes between buildings, stripped templates and fresh building keys on stamping, pre-rework plans loading as one legacy building, decor on the road and never in a doorway, seeded, an empty decor style placing nothing; lattice math and residues; the index NBT round trip plus malformed state, a road record's style and the push writing each style once; the `w`/`g` bit layout and a playlist round trip; shapes and modifiers; partitions, rotation/mirror of flags, normalise/merge, `PlanCodec` round trip; the road contract (7 wide, lanes, joints, corner posts, medallion, plaza post, give-way); a road built in two applies equals one built at once, and a standing road keeps its own style; a plan request round-trips through the bounded inflate and a gzip bomb is refused; plan undo/redo depth, redo drop and the 100-step cap; a result is matched to the oldest pending request, the same plan is not sent twice while its apply waits, and an applied plan empties to its settings; one fresh press is one shape point |
-| Gametests, 10 tests | `QcGameTests`, `QcPlanGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, an align moves the building, layer 0 and non-creative are refused; a plan (full unit, framework-only unit, cleared cell, road) applies and records its road cells as roads, `/qc undo` restores every block and record, redo re-applies it, a second undo restores it again and a new apply drops the redo stack; plan refusals are user-visible; a qckit house applies with real block states (upright log posts, beams along their axis, a door on the road face, a hip roof, the road, street decor) and an empty style is refused naming its roles |
+| Gametests, 14 tests | `QcGameTests`, `QcPlanGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, an align moves the building and `/qc undo` puts it back, an align of a plan-applied building is refused, layer 0 and non-creative are refused; a plan (full unit, framework-only unit, cleared cell, road) applies and records its road cells as roads, `/qc undo` restores every block and record, redo re-applies it, a second undo restores it again and a new apply drops the redo stack; plan refusals are user-visible; a qckit house applies with real block states (upright log posts, beams along their axis, a door on the road face, a hip roof, the road, street decor) and an empty style is refused naming its roles |
 
 Golden mechanics: baselines are **classpath resources** (`/golden/unit-export-baseline.txt`) inside the test mod,
 so they never reach the shipped jar; comparison is exact, order-sensitive line equality after CRLF/CR -> LF

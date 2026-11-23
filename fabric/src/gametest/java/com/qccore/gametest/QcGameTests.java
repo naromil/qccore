@@ -10,6 +10,7 @@ import com.qccore.core.palette.BlockPalette;
 import com.qccore.core.palette.Defaults;
 import com.qccore.world.QcAlignService;
 import com.qccore.world.QcBuildService;
+import com.qccore.world.QcUndoService;
 import com.qccore.world.QcUnitIndex;
 import com.qccore.world.QcUnitRecord;
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
@@ -125,6 +126,70 @@ public class QcGameTests implements FabricGameTest {
         }
         if (!units.containsKey(shifted) || !units.containsKey(shifted.offset(8, 0, 0))) {
             throw new AssertionError("the index does not hold the shifted units");
+        }
+
+        ctx.succeed();
+    }
+
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void alignIsUndoable(GameTestHelper ctx) {
+        BlockPos anchor = testAnchor(ctx, 40, 80);
+        anchor = anchor.offset(nudge(anchor.getX()), nudge(anchor.getY()), nudge(anchor.getZ()));
+        BlockPos row = layerOne(anchor);
+        BlockPalette palette = defaultPalette();
+        ServerLevel world = ctx.getLevel();
+        ServerPlayer player = ctx.makeMockServerPlayerInLevel();
+        clearIndexArea(world, row);
+
+        QcResult buildResult = QcBuildService.build(player, anchor, TestFixtures.wallPair(), palette);
+        if (!buildResult.ok()) {
+            throw new AssertionError("build was refused: " + buildResult.message());
+        }
+        QcUnitRecord west = index(world).get(row);
+        QcResult result = QcAlignService.align(player, row, 0, 0, 0, palette);
+        if (!result.ok()) {
+            throw new AssertionError("align was refused: " + result.message());
+        }
+        BlockPos shifted = row.offset(Alignment.nearestDelta(row.getX(), 0), Alignment.nearestDelta(row.getY(), 0),
+                Alignment.nearestDelta(row.getZ(), 0));
+
+        QcResult undo = QcUndoService.undo(player);
+        if (!undo.ok()) {
+            throw new AssertionError("the align could not be undone: " + undo.message());
+        }
+        if (world.getBlockState(row).getBlock() != Blocks.POLISHED_DEEPSLATE) {
+            throw new AssertionError("undo did not put the framework back at the old origin " + row.toShortString());
+        }
+        Map<BlockPos, QcUnitRecord> units = index(world);
+        if (!west.equals(units.get(row)) || !units.containsKey(row.offset(8, 0, 0))) {
+            throw new AssertionError("undo did not restore the old unit records");
+        }
+        if (units.containsKey(shifted) || units.containsKey(shifted.offset(8, 0, 0))) {
+            throw new AssertionError("undo left the shifted unit records");
+        }
+        // the build itself is the next undo step
+        if (!QcUndoService.undo(player).ok() || !world.getBlockState(row).isAir()) {
+            throw new AssertionError("the build before the align could not be undone");
+        }
+
+        ctx.succeed();
+    }
+
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void alignRefusesAPlanBuilding(GameTestHelper ctx) {
+        BlockPos row = layerOne(testAnchor(ctx, 40, 120));
+        ServerLevel world = ctx.getLevel();
+        clearIndexArea(world, row);
+        world.setBlock(row, Blocks.STONE.defaultBlockState(), 3);   // so the prune keeps the record
+        QcUnitRecord planned = new QcUnitRecord(row, 0, 0, QcUnitRecord.BUILDING, 0, 12345);
+        QcUnitIndex.get(world).put(world.dimension().location(), row, planned);
+
+        QcResult result = QcAlignService.align(ctx.makeMockServerPlayerInLevel(), row, 0, 0, 0, defaultPalette());
+        if (result.ok() || !result.message().startsWith("this building was applied from a plan")) {
+            throw new AssertionError("align of a plan building was not refused: " + result.message());
+        }
+        if (!planned.equals(index(world).get(row)) || world.getBlockState(row).getBlock() != Blocks.STONE) {
+            throw new AssertionError("a refused align changed the building");
         }
 
         ctx.succeed();

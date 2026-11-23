@@ -18,7 +18,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * World undo and redo for applied plans, per player and in memory only (it does not survive a
+ * World undo and redo for applied plans, legacy builds and aligns, per player and in memory only (it does not survive a
  * restart).
  *
  * <p>Each entry holds the block states a change overwrote, first state per position, and the index
