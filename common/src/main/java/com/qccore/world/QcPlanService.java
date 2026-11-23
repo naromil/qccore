@@ -6,8 +6,10 @@ import com.qccore.core.UnitPos;
 import com.qccore.core.palette.BlockPalette;
 import com.qccore.core.plan.Cell;
 import com.qccore.core.plan.ComponentMask;
+import com.qccore.core.plan.Join;
 import com.qccore.core.plan.PlanCompiler;
 import com.qccore.core.plan.QcPlan;
+import com.qccore.core.plan.Surroundings;
 import com.qccore.core.qc.District;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,17 +45,20 @@ public final class QcPlanService {
     private QcPlanService() {
     }
 
-    public static QcResult apply(ServerPlayer player, BlockPos anchor, QcPlan plan, BlockPalette palette) {
+    public static QcResult apply(ServerPlayer player, BlockPos anchor, QcPlan planned, BlockPalette palette) {
         if (!player.isCreative()) {
             return new QcResult(false, "creative mode is required to build into the world");
         }
-        QcResult problem = validate(plan, palette);
+        QcResult problem = validate(planned, palette);
         if (problem != null) {
             return problem;
         }
         ServerLevel level = player.serverLevel();
-        PlanCompiler.Compiled compiled = PlanCompiler.compile(plan, palette, anchor,
-                QcSurroundings.of(QcUnitIndex.get(level).units(level.dimension().location()).values(), anchor));
+        Surroundings around = QcSurroundings.of(QcUnitIndex.get(level).units(level.dimension().location()).values(), anchor);
+        // standing parts of the same building are rebuilt with the new part (Join)
+        QcPlan plan = Join.join(planned, around);
+        int rebuilt = Join.joined(planned, plan).size();
+        PlanCompiler.Compiled compiled = PlanCompiler.compile(plan, palette, anchor, around);
         if (!compiled.problems().isEmpty()) {
             return new QcResult(false, compiled.problems().get(0));
         }
@@ -73,6 +78,9 @@ public final class QcPlanService {
 
         ResourceLocation dimension = world.dimension().location();
         Map<BlockPos, BlockState> undo = new LinkedHashMap<>();
+        if (rebuilt > 0) {
+            QcWorldOps.clearBlocks(world, stale(world, plan, Join.joined(planned, plan), palette, anchor, around, compiled), undo);
+        }
         QcWorldOps.clearBlocks(world, compiled.air(), undo);
         QcWorldOps.clearFootprint(world, fullOrigins(plan, anchor),
                 QcUnitIndex.get(world).units(world.dimension().location()).keySet(), otherCells(plan, anchor), undo);
@@ -85,7 +93,9 @@ public final class QcPlanService {
             for (Map.Entry<UnitPos, QcUnit> entry : plan.units().peekLayer(layer).entrySet()) {
                 BlockPos origin = PlanCompiler.origin(anchor, Cell.of(entry.getKey(), layer));
                 previous.put(origin, index.units(dimension).get(origin));
-                index.put(dimension, origin, QcUnitRecord.of(origin, entry.getValue()));
+                int part = District.generates(plan, Cell.of(entry.getKey(), layer))
+                        ? Join.signature(plan, plan.building(Cell.of(entry.getKey(), layer))) : 0;
+                index.put(dimension, origin, QcUnitRecord.of(origin, entry.getValue(), part));
             }
         }
         // Road cells are recorded too, so a later plan joins them without a /qc scan. A building
@@ -102,14 +112,17 @@ public final class QcPlanService {
         }
         QcUndoService.push(player, new QcUndoService.Entry(dimension, undo, previous));
 
-        String message = "applied plan: " + plan.summary() + " at " + anchor.toShortString() + ", "
+        String message = "applied plan: " + planned.summary() + " at " + anchor.toShortString() + ", "
                 + undo.size() + " block(s) changed (/qc undo reverts it)";
+        if (rebuilt > 0) {
+            message += "; rebuilt " + rebuilt + " standing unit(s) of the same building so the parts join";
+        }
         if (!compiled.notes().isEmpty()) {
             message += "; note: " + compiled.notes().get(0)
                     + (compiled.notes().size() > 1 ? " (+" + (compiled.notes().size() - 1) + " more)" : "");
         }
         LOGGER.info("qccore: {} applied a plan ({}) at {} in {}, {} blocks changed", player.getName().getString(),
-                plan.summary(), anchor, dimension, undo.size());
+                planned.summary(), anchor, dimension, undo.size());
         return new QcResult(true, message);
     }
 
@@ -158,6 +171,43 @@ public final class QcPlanService {
             }
         }
         return null;
+    }
+
+    /**
+     * Blocks the rebuilt standing part wrote outside the cells when it was built alone (eaves, roof
+     * ends, facade pieces) that the joined build no longer writes. Only blocks still exactly as that
+     * build left them are taken back; inside the plan's unit cells the footprint clear does it.
+     */
+    private static List<BlockPos> stale(ServerLevel world, QcPlan plan, Set<Cell> rebuilt, BlockPalette palette,
+            BlockPos anchor, Surroundings around, PlanCompiler.Compiled joined) {
+        Set<BlockPos> cells = new HashSet<>(fullOrigins(plan, anchor));
+        List<BlockPos> out = new ArrayList<>();
+        PlanCompiler.Compiled alone = PlanCompiler.compile(Join.alone(plan, rebuilt), palette, anchor, around);
+        for (Map.Entry<BlockPos, BlockState> entry : alone.blocks().entrySet()) {
+            BlockPos pos = entry.getKey();
+            if (!joined.blocks().containsKey(pos) && !insideCells(cells, pos, anchor)
+                    && world.getBlockState(pos).equals(entry.getValue())) {
+                out.add(pos);
+            }
+        }
+        return out;
+    }
+
+    private static boolean insideCells(Set<BlockPos> origins, BlockPos pos, BlockPos anchor) {
+        int x = Math.floorDiv(pos.getX() - anchor.getX(), 8), y = Math.floorDiv(pos.getY() - anchor.getY(), 8),
+                z = Math.floorDiv(pos.getZ() - anchor.getZ(), 8);
+        for (int dx = 0; dx >= -1; dx--) {
+            for (int dy = 0; dy >= -1; dy--) {
+                for (int dz = 0; dz >= -1; dz--) {
+                    BlockPos origin = anchor.offset((x + dx) * 8, (y + dy) * 8, (z + dz) * 8);
+                    if (origins.contains(origin) && pos.getX() - origin.getX() <= 8
+                            && pos.getY() - origin.getY() <= 8 && pos.getZ() - origin.getZ() <= 8) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /** Origins of the plan's road and cleared cells, which a unit's shell clear stays out of. */

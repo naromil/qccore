@@ -217,6 +217,17 @@ Server/client split:
   door for everyone, the 3-wide approach (a 3..5) of a standing door for everyone, and that of a planned door
   for every building but its own (its own door surround stays). A relief group that touches any of these goes
   whole.
+- **New parts join their own building** (T17, user 2026-11-21: "newly built parts are allowed to change previously
+  built parts to work with them, because we want them to look like as if they are built at the same time"). This
+  narrows the rule above to standing buildings of *another* design. An apply stores with each qckit building cell
+  the design signature `core/plan/Join.signature` (template, options, style name, chosen blocks; record key `p`,
+  0 = none, so scanned and legacy cells never join). `Join.join(plan, around)` adds every standing cell of the
+  same signature that touches (6 faces) a plan building, and those connected to it, as units of that building
+  with their recorded flags; apply (`QcPlanService`) and the block preview both compile the joined plan, so the
+  standing part is cleared and rebuilt with the new one. Apply also takes back what the standing part wrote
+  outside the cells when built alone (`Join.alone`) and the joined build no longer writes, only where the
+  block is still exactly that. Gametest `aNewPartJoinsTheStandingPartOfItsBuilding`: a house applied in two
+  halves equals the house applied at once, and a house of another design next door is untouched.
 - `/qc scan [radius]` = `QcScanService` (server, read-only towards the world) over the registry-free
   `core/scan/QcScanner`: it reads the box (radius 8..64, 16 below to 40 above) once, picks the one of the 512
   grid offsets that explains the most building units (all 12 framework edges built, terrain blocks counting as
@@ -279,7 +290,7 @@ Bit layout of `w`/`g`, identical in `LayersCodec`, `QcUnitRecord` and `QcOverlay
 | `common/src/test/java/com/qccore/core/` | JUnit tests over registry-free logic (`plan/` holds the shape, plan and road tests) |
 | `common/src/test/java/com/qccore/net/` | `PlanRequestDecodeTest`: the bounded inflate of a plan request |
 | `common/src/test/java/com/qccore/client/` | `QcHistoryTest`: the registry-free plan undo/redo history; `QcRequestsTest`: results matched to requests, history revision, `QcPlan.emptied` |
-| `fabric/src/gametest/java/com/qccore/gametest/` | 10 gametests plus `TestFixtures` (fixtures + golden plumbing) |
+| `fabric/src/gametest/java/com/qccore/gametest/` | 12 gametests plus `TestFixtures` (fixtures + golden plumbing) |
 | `fabric/src/gametest/resources/` | the `qccore-gametest` mod metadata and `golden/unit-{export,import}-baseline.txt` |
 
 There is no separate client source set any more: client classes live in `common` next to the server code and are
@@ -291,7 +302,7 @@ it only behind `FMLEnvironment.dist == Dist.CLIENT` / `DistExecutor`, the Fabric
 ```bash
 ./gradlew build                 # all projects: :common:test, :fabric:runGameTest (through check), both remapJars
 ./gradlew :common:test          # the 44 JUnit tests: no game, no block registry
-./gradlew :fabric:runGameTest   # the 10 gametests in a real dev server world, ending "All 10 required tests passed :)"
+./gradlew :fabric:runGameTest   # the 12 gametests in a real dev server world, ending "All 12 required tests passed :)"
 ./gradlew :fabric:runClient     # dev Fabric client (needs a display); :forge:runClient for Forge
 ./gradlew :fabric:runServer     # dev dedicated server; /qc works from its console; :forge:runServer for Forge
 ./gradlew :forge:compileJava    # compile the Forge glue (and common) only

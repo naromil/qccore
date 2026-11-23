@@ -85,6 +85,21 @@ class IndexNbtTest {
     }
 
     @Test
+    void anAppliedPartKeepsItsDesignSignature() {
+        QcUnitIndex index = new QcUnitIndex();
+        BlockPos part = new BlockPos(0, 64, 0);
+        BlockPos plain = new BlockPos(8, 64, 0);
+        index.put(OVERWORLD, part, new QcUnitRecord(part, 0b0010, 0, QcUnitRecord.BUILDING, 0, -123456789));
+        index.put(OVERWORLD, plain, new QcUnitRecord(plain, 0, 0));
+
+        CompoundTag saved = index.save(new CompoundTag());
+        QcUnitIndex read = QcUnitIndex.read(saved);
+        assertEquals(-123456789, read.units(OVERWORLD).get(part).part());
+        assertEquals(0, read.units(OVERWORLD).get(plain).part());
+        assertEquals(new QcUnitRecord(plain, 0, 0).toNbt(), read.units(OVERWORLD).get(plain).toNbt(), "no p key when there is no design");
+    }
+
+    @Test
     void emptyAndMissingStateReadsEmpty() {
         assertEquals(0, QcUnitIndex.read(new CompoundTag()).totalUnits());
         assertEquals(0, QcUnitIndex.read(null).totalUnits());
