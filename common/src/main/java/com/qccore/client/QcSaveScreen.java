@@ -32,6 +32,7 @@ public class QcSaveScreen extends Screen {
 	private boolean footerError;
 	private int closeTicks = -1;
 	private boolean includeAir;
+	private final QcConfirm confirm = new QcConfirm();
 
 	public QcSaveScreen() {
 		super(Component.translatable("qccore.screen.save"));
@@ -114,6 +115,12 @@ public class QcSaveScreen extends Screen {
 		CompoundTag tag = StructureNbt.write(compiled.forExport(this.includeAir));
 		if (tag == null) {
 			this.footer = "the plan produced no blocks";
+			this.footerError = true;
+			return;
+		}
+		String fileName = QcSchematics.normaliseName(this.name) + ".nbt";
+		if (java.nio.file.Files.exists(QcSchematics.dir().resolve(fileName)) && !this.confirm.confirm("export:" + fileName)) {
+			this.footer = fileName + " exists: save again to replace it";
 			this.footerError = true;
 			return;
 		}

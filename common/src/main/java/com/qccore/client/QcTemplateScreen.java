@@ -43,6 +43,7 @@ public class QcTemplateScreen extends Screen {
 	private int lastClicked = -1;
 	private int left;
 	private int right;
+	private final QcConfirm confirm = new QcConfirm();
 	private final QcSceneView view = new QcSceneView();
 	private String viewName;
 	private int[] viewRect;
@@ -224,6 +225,7 @@ public class QcTemplateScreen extends Screen {
 			if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_UP) {
 				int step = keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN ? 1 : -1;
 				this.selected = Math.floorMod(this.selected + step, this.names.size());
+				this.confirm.reset();
 				this.reveal = true;
 				rebuild();
 				return true;
@@ -241,6 +243,9 @@ public class QcTemplateScreen extends Screen {
 		boolean doubleClick = index == this.lastClicked && now - this.lastClick < 350;
 		this.lastClick = now;
 		this.lastClicked = index;
+		if (index != this.selected) {
+			this.confirm.reset();
+		}
 		this.selected = index;
 		if (doubleClick) {
 			use(false);
@@ -280,6 +285,11 @@ public class QcTemplateScreen extends Screen {
 			return;
 		}
 		String name = this.names.get(this.selected);
+		if (!this.confirm.confirm("delete:" + name)) {
+			this.footer = "click Delete again to delete " + name + " for good";
+			this.footerError = true;
+			return;
+		}
 		try {
 			QcTemplates.delete(name);
 			if (name.equals(QcClientState.templateName)) {
@@ -304,12 +314,20 @@ public class QcTemplateScreen extends Screen {
 			this.footerError = true;
 			return;
 		}
+		String raw = this.nameField.getValue();
+		String saved = QcSchematics.normaliseName(raw);
+		if (QcTemplates.exists(raw) && !this.confirm.confirm("save:" + saved)) {
+			this.footer = "template " + saved + " exists: click Save again to replace it with this plan";
+			this.footerError = true;
+			return;
+		}
 		try {
-			Path file = QcTemplates.save(this.nameField.getValue(), QcClientState.plan);
+			Path file = QcTemplates.save(raw, QcClientState.plan);
 			this.footer = "saved " + file.getFileName();
 			this.footerError = false;
+			// the preview is cached by name, and a replaced template keeps its name
+			this.viewName = null;
 			this.names = QcTemplates.list();
-			String saved = QcSchematics.normaliseName(this.nameField.getValue());
 			this.selected = Math.max(0, this.names.indexOf(saved));
 			this.reveal = true;
 			rebuild();

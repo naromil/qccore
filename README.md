@@ -76,7 +76,7 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
    reverts the last 10 applies (in memory; block-entity contents are not restored), and **/qc redo**
    (or "Redo apply") puts an undone apply back until the next apply.
    **J** exports the plan as `.nbt` to the schematics folder, sparse by default, or with the clearing
-   written as air.
+   written as air. Saving over an existing file takes a second press.
 7. **M** toggles the ghost-block preview, **O** the wireframes, **I** opens the lattice, layout import
    and the legacy QCSimple palette, **U** re-aligns a placed building.
 8. **/qc scan [radius]** (default 32, up to 64) finds QC buildings that already stand round you, built by
@@ -100,7 +100,8 @@ left out. **decor on/off**, **density** and **seed** sit under the decor style's
 buildings with their designs and style names, partitions, roads, cleared cells — to
 `<gameDir>/qccore/templates/<name>.qct.nbt`, **with every block choice stripped**. Stamping a template makes
 new buildings and adds its styles empty (a style of the same name you already filled is used as it is);
-fill them in the block chooser, then apply. The template screen previews the selected template in 3D, built
+fill them in the block chooser, then apply. Replacing a saved template or deleting one takes a second click.
+The template screen previews the selected template in 3D, built
 with default blocks (the brick-and-spruce house and high street of the QC Shorts brickworks build) where its
 styles are empty; the defaults are only for that picture and never go into your plan. **Kits** (block chooser → Kits) save one style's blocks as
 editable JSON in `<gameDir>/qccore/kits/<name>.json` (`{"kind": "building" | "road", "blocks": {role: id}}`)

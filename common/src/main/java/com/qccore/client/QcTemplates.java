@@ -83,6 +83,11 @@ public final class QcTemplates {
 		}
 	}
 
+	/** Whether saving under {@code rawName} would replace an existing template. */
+	public static boolean exists(String rawName) {
+		return Files.exists(dir().resolve(QcSchematics.normaliseName(rawName) + SUFFIX));
+	}
+
 	public static void delete(String name) {
 		try {
 			Files.deleteIfExists(dir().resolve(name + SUFFIX));
