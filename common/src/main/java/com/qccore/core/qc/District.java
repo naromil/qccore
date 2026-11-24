@@ -299,7 +299,8 @@ public final class District {
                 made.keySet().forEach(k -> templates.put(k, plan.buildings().get(k).template));
                 for (Map.Entry<Integer, Map<UnitPos, BlockChoice>> entry : roadLayers.entrySet()) {
                     int layer = entry.getKey();
-                    Set<Long> openings = new HashSet<>();
+                    // standing doors keep their approach and standing buildings are no open edge, as for the roads
+                    Set<Long> openings = new HashSet<>(around.doorOpenings(layer));
                     for (Building b : made.values()) {
                         if (b.groundLayer == layer) {
                             openings.addAll(b.openings);
@@ -308,6 +309,11 @@ public final class District {
                     Set<UnitPos> occupied = new HashSet<>();
                     if (plan.units().peekLayer(layer) != null) {
                         occupied.addAll(plan.units().peekLayer(layer).keySet());
+                    }
+                    for (Cell cell : standing) {
+                        if (cell.layer() == layer) {
+                            occupied.add(cell.pos());
+                        }
                     }
                     Decor.dress(out, by, decor, Math.max(0, Math.min(100, plan.decorDensity)) / 100.0, plan.decorSeed,
                             layer, entry.getValue().keySet(), openings, made, templates, occupied);

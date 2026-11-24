@@ -9,7 +9,10 @@ import com.qccore.core.plan.BuildingSpec;
 import com.qccore.core.plan.Cell;
 import com.qccore.core.plan.Flags;
 import com.qccore.core.plan.QcPlan;
+import com.qccore.core.plan.RoadKit;
+import com.qccore.core.plan.Surroundings;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import org.junit.jupiter.api.Test;
@@ -19,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /** The qckit port: buildings from a design and a style, roads round them, the merge rules. */
 class DistrictTest {
@@ -310,6 +314,26 @@ class DistrictTest {
                 if (!bare.containsKey(e.getKey()) && below != null && bare.containsKey(e.getKey().below())) {
                     assertFalse(BlockStr.base(below).endsWith(":water") || BlockStr.base(below).endsWith(":lava"),
                             "seed " + seed + ": " + e.getValue() + " stands on " + below + " at " + e.getKey());
+                }
+            }
+        }
+    }
+
+    @Test
+    void decorKeepsTheApproachOfAStandingDoorFree() {
+        // a standing building south of the street at (0, 1, 3), its door on the north side (bit 0)
+        QcPlan plan = street();
+        Surroundings around = new Surroundings(Set.of(), Map.of(new Cell(0, 1, 3), 0b0001), Set.of(new Cell(0, 1, 3)));
+        Set<Long> approach = around.doorOpenings(1);
+        for (int seed = 0; seed < 8; seed++) {
+            plan.decorSeed = seed;
+            District.Result result = District.build(plan, around);
+            assertTrue(result.problems().isEmpty(), result.problems().toString());
+            Map<BlockPos, String> bare = District.build(withoutDecor(plan), around).blocks();
+            for (Map.Entry<BlockPos, String> e : result.blocks().entrySet()) {
+                BlockPos p = e.getKey();
+                if (!bare.containsKey(p) && approach.contains(RoadKit.key(p.getX(), p.getZ()))) {
+                    fail("seed " + seed + ": " + e.getValue() + " in front of the standing door at " + p);
                 }
             }
         }
