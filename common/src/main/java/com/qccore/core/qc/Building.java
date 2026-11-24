@@ -1313,8 +1313,13 @@ public final class Building {
                 }
                 int x = kx(c);
                 int z = kz(c);
-                boolean inside = f.contains(key(x + stepZ, z + stepX)) && f.contains(key(x - stepZ, z - stepX));
-                if (inside) {
+                long endA = key(x + stepZ, z + stepX);
+                long endB = key(x - stepZ, z - stepX);
+                if (f.contains(endA) && f.contains(endB)) {
+                    continue;
+                }
+                // an end against a taller neighbour is that neighbour's wall, not a gable
+                if (!f.contains(endA) && blocked.contains(endA) || !f.contains(endB) && blocked.contains(endB)) {
                     continue;
                 }
                 for (int yy = y + 1; yy < h.get(c); yy++) {

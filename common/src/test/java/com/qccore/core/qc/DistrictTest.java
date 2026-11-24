@@ -113,6 +113,40 @@ class DistrictTest {
         assertEquals(shifted, b.blocks());
     }
 
+    /**
+     * A gable end against a taller neighbour is that neighbour's wall, not a gable (qckit
+     * building.py `pitched`): the gable triangle stays off the shared wall plane, so the
+     * neighbour's upper face keeps its own blocks.
+     */
+    @Test
+    void aGableEndAgainstATallerNeighbourBuildsNoGable() {
+        QcPlan plan = new QcPlan();
+        plan.buildings().put("A", new BuildingSpec("house", "s"));
+        plan.buildings().put("B", new BuildingSpec("house", "s"));
+        plan.buildings().get("A").options.put("roof", "gable");
+        plan.buildings().get("A").options.put("roof_axis", "x");
+        plan.styles().put("s", fullStyle());
+        plan.styles().put("street", road());
+        plan.addUnit(new Cell(0, 1, 0), "A");
+        plan.addUnit(new Cell(1, 1, 0), "B");
+        plan.addUnit(new Cell(1, 2, 0), "B");
+        for (int x = -1; x <= 2; x++) {
+            plan.roads().put(new Cell(x, 1, 1), "street");
+        }
+        District.Result result = District.build(withoutDecor(plan));
+        assertTrue(result.problems().isEmpty(), result.problems().toString());
+        Map<BlockPos, String> b = result.blocks();
+        // A's roof plane is y = 16; its free west end (x = 0) gets a gable wall
+        assertTrue(b.entrySet().stream().anyMatch(e -> e.getKey().getX() == 0 && e.getKey().getY() > 16
+                && e.getValue().equals("minecraft:gable_block")), "the free end keeps its gable");
+        // its east end (x = 8) is B's upper west face: no gable there
+        for (Map.Entry<BlockPos, String> e : b.entrySet()) {
+            if (e.getKey().getX() == 8 && e.getKey().getY() > 16) {
+                assertNotEquals("minecraft:gable_block", e.getValue(), "gable in B's wall at " + e.getKey());
+            }
+        }
+    }
+
     @Test
     void everyTemplateRoofAndPierBuildsWithoutMissingRoles() {
         for (String template : Templates.names()) {
