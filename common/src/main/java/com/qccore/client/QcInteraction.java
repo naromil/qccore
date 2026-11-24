@@ -359,6 +359,8 @@ public final class QcInteraction {
 					}
 					changed |= !QcClientState.roadStyle.equals(plan.roads().put(cell, QcClientState.roadStyle));
 				}
+				// as erase and assign do: a building whose last unit became road is gone, not an empty entry
+				plan.pruneBuildings();
 				return changed;
 			}
 			case TEMPLATE -> {
