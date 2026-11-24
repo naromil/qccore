@@ -46,6 +46,7 @@ import net.minecraft.world.phys.Vec3;
 public final class QcInteraction {
 	private static final String FACE_MESSAGE = "QC: look at a side face to place walls";
 	private static final String PAIR_MESSAGE = "QC: both QC units must exist to attach a wall";
+	private static final String GATE_MESSAGE = "QC: no wall on this face; Shift+RMB sets one, then Ctrl+RMB makes it a gate";
 	private static final String NO_UNIT_MESSAGE = "QC: no placed QC Unit in the crosshair";
 	private static final String WORLD_MESSAGE = "QC: editor reset (changed dimension)";
 
@@ -709,6 +710,11 @@ public final class QcInteraction {
 			return false;
 		}
 		if (gate) {
+			if (wallState && !(hasWallFlag(center, side) && hasWallFlag(neighbour, opposite(side)))) {
+				// a gate is a doorway in a wall: without one there is nothing to open, so say so instead of nothing
+				QcClientState.say(GATE_MESSAGE);
+				return false;
+			}
 			if (hasWallFlag(center, side) && hasWallFlag(neighbour, opposite(side))
 					&& (isGateFlag(center, side) != wallState || isGateFlag(neighbour, opposite(side)) != wallState)) {
 				setGateFlag(center, side, wallState);
