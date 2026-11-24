@@ -290,6 +290,32 @@ class DistrictTest {
     }
 
     @Test
+    void decorPutsNothingOnALiquidRoadFloor() {
+        // qckit f1fc3d6 (T20): a field road's water medallion got trees with their trunks in the channel
+        QcPlan plan = street();
+        BlockChoice street = plan.styles().get("street");
+        street.set("medallion", "minecraft:water");
+        street.set("centre", "minecraft:water");
+        BlockChoice canal = plan.styles().get("yard");
+        for (int lane = 1; lane <= 4; lane++) {
+            canal.set("floor" + lane, "minecraft:water");
+        }
+        for (int seed = 0; seed < 8; seed++) {
+            plan.decorSeed = seed;
+            District.Result result = District.build(plan);
+            assertTrue(result.problems().isEmpty(), result.problems().toString());
+            Map<BlockPos, String> bare = District.build(withoutDecor(plan)).blocks();
+            for (Map.Entry<BlockPos, String> e : result.blocks().entrySet()) {
+                String below = result.blocks().get(e.getKey().below());
+                if (!bare.containsKey(e.getKey()) && below != null && bare.containsKey(e.getKey().below())) {
+                    assertFalse(BlockStr.base(below).endsWith(":water") || BlockStr.base(below).endsWith(":lava"),
+                            "seed " + seed + ": " + e.getValue() + " stands on " + below + " at " + e.getKey());
+                }
+            }
+        }
+    }
+
+    @Test
     void anEmptyDecorStylePlacesNothingAndAMissingOneIsReported() {
         QcPlan plan = street();
         plan.styles().put("props", new BlockChoice(Roles.DECOR));

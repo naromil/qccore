@@ -42,6 +42,7 @@ public final class Decor {
     private static final String[] YARD = {"grass_block", "moss_block", "podzol", "mycelium"};
     private static final String[] SOIL = {"grass_block", "dirt", "coarse_dirt", "podzol", "moss_block",
             "rooted_dirt", "mud", "mycelium", "farmland"};
+    private static final String[] LIQUID = {"water", "lava"};
 
     private static final Map<String, Map<String, Integer>> CHARACTER = new LinkedHashMap<>();
     private static final Map<String, String> TEMPLATE_CHARACTER = new LinkedHashMap<>();
@@ -204,10 +205,14 @@ public final class Decor {
         return false;
     }
 
-    /** A road column with its floor laid, not a door's approach, not taken. */
+    /**
+     * A road column with a solid floor laid (not a water channel or a lava medallion), not a door's
+     * approach, not taken.
+     */
     private boolean groundOk(int x, int z) {
         long c = Building.key(x, z);
-        return area.containsKey(c) && floor(x, z) != null && !openings.contains(c) && !used.contains(c);
+        String f = floor(x, z);
+        return area.containsKey(c) && f != null && !soil(f, LIQUID) && !openings.contains(c) && !used.contains(c);
     }
 
     private boolean fits(Map<BlockPos, String> cells) {
