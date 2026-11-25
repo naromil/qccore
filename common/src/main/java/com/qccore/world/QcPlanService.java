@@ -61,7 +61,7 @@ public final class QcPlanService {
         int rebuilt = Join.joined(planned, plan).size();
         PlanCompiler.Compiled compiled = PlanCompiler.compile(plan, palette, anchor, around);
         if (!compiled.problems().isEmpty()) {
-            return new QcResult(false, compiled.problems().get(0));
+            return new QcResult(false, QcResult.first(compiled.problems()));
         }
         if (compiled.blocks().isEmpty() && compiled.air().isEmpty() && compiled.ground().isEmpty()) {
             return new QcResult(false, "the plan produced no blocks");
@@ -127,8 +127,7 @@ public final class QcPlanService {
             message += "; rebuilt " + rebuilt + " standing unit(s) of the same building so the parts join";
         }
         if (!compiled.notes().isEmpty()) {
-            message += "; note: " + compiled.notes().get(0)
-                    + (compiled.notes().size() > 1 ? " (+" + (compiled.notes().size() - 1) + " more)" : "");
+            message += "; note: " + QcResult.first(compiled.notes());
         }
         LOGGER.info("qccore: {} applied a plan ({}) at {} in {}, {} blocks changed", player.getName().getString(),
                 planned.summary(), anchor, dimension, undo.size());

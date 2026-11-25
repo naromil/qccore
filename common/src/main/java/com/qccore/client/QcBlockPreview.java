@@ -2,6 +2,7 @@ package com.qccore.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.qccore.core.QcResult;
 import com.qccore.core.plan.Join;
 import com.qccore.core.plan.PlanCompiler;
 import com.qccore.core.plan.Surroundings;
@@ -103,7 +104,7 @@ public final class QcBlockPreview {
 			PlanCompiler.Compiled compiled = PlanCompiler.compile(Join.join(QcClientState.plan, around),
 					QcClientState.palette, anchor, around);
 			blocks = compiled.forExport(false);
-			problem = compiled.problems().isEmpty() ? null : compiled.problems().get(0);
+			problem = QcResult.first(compiled.problems());
 		} catch (RuntimeException e) {
 			blocks = Map.of();
 			problem = "preview failed: " + e.getMessage();

@@ -108,7 +108,7 @@ public class QcSaveScreen extends Screen {
 		}
 		PlanCompiler.Compiled compiled = PlanCompiler.compile(QcClientState.plan, QcClientState.palette, BlockPos.ZERO);
 		if (!compiled.problems().isEmpty()) {
-			this.footer = compiled.problems().get(0);
+			this.footer = QcResult.first(compiled.problems());
 			this.footerError = true;
 			return;
 		}
