@@ -272,6 +272,7 @@ Seven packets in `net/QcPackets`, all loader-neutral `QcPacket` records (`write(
 | `core/nbt/PlanCodec` | `{"units":LayersCodec,"masks":[{x,y,z,m}],"clears":[{x,y,z}],"clearMargin","ground","roads":[{x,y,z,s}],"roadStyles":{name:style}}`, `y` = layer |
 | `QcPlanC2S` request | gzip of `{"action":"apply","anchor":[x,y,z],"plan":PlanCodec,"palette":PaletteCodec}` |
 | templates / kits | `<gameDir>/qccore/templates/<name>.qct.nbt` = gzip `{"qcTemplate":1,"plan","palette"}` (plan normalised to min cell `(0,1,0)`); `<gameDir>/qccore/kits/<name>.json` = palette ids + structure file names, road styles, ground |
+| saved styles | `<gameDir>/qccore/styles.nbt` = gzip `{name: BlockChoice nbt}` of the plan's non-empty styles, written by `QcSavedStyles.save` when the block chooser is removed, read once per launch on the first G (`restoreOnce`, fills only missing/empty styles) |
 | `core/nbt/StructureNbt` | `{DataVersion,size,palette,blocks,entities}`; `size` and each `pos` are int **lists**, both list and int-array form are read |
 
 Bit layout of `w`/`g`, identical in `LayersCodec`, `QcUnitRecord` and `QcOverlayRenderer`:

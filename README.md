@@ -108,7 +108,7 @@ The template screen previews the selected template in 3D, built
 with default blocks (the brick-and-spruce house and high street of the QC Shorts brickworks build) where its
 styles are empty; the defaults are only for that picture and never go into your plan. **Kits** (block chooser → Kits) save one style's blocks as
 editable JSON in `<gameDir>/qccore/kits/<name>.json` (`{"kind": "building" | "road", "blocks": {role: id}}`)
-and load them into any style of the same kind; saving over an existing kit takes a second press. The kit cycler also offers **presets**: the building and street
+and load them into any style of the same kind; saving over an existing kit takes a second press. The plan's styles themselves are also kept in `<gameDir>/qccore/styles.nbt` whenever the block chooser closes, so a restart or a crash doesn't lose the blocks you chose: the first time you press **G** after a launch they come back (a style the plan already has blocks for is left as it is). The kit cycler also offers **presets**: the building and street
 blocks of eight QC Shorts batches (brickworks, alpine village, sandstone bazaar, deepslate foundry, cherry gardens,
 white citadel, canal harbour, college quads). Loading one copies its blocks into the selected style as a starting
 point; every role stays yours to change, and roles the batch left unset stay open (Create's framed glass is

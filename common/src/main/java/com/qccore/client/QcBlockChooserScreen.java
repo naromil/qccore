@@ -656,5 +656,7 @@ public class QcBlockChooserScreen extends Screen {
 	public void removed() {
 		storeFields();
 		commit();
+		// every close lands here (Done, Esc, another screen): keep the choices over a restart
+		QcSavedStyles.save(QcClientState.plan.styles());
 	}
 }
