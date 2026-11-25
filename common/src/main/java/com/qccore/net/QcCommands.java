@@ -13,6 +13,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 
 import com.qccore.world.QcUnitRecord;
@@ -26,7 +29,6 @@ import com.qccore.world.QcUnitRecord;
 public final class QcCommands {
 
     private static final int DEFAULT_RADIUS = 64;
-    private static final int INFO_RADIUS = 64;
 
     private QcCommands() {
     }
@@ -37,7 +39,9 @@ public final class QcCommands {
                 Commands.literal("qc")
                         .then(Commands.literal("info")
                                 .requires(source -> source.hasPermission(2))
-                                .executes(context -> info(context.getSource())))
+                                .executes(context -> info(context.getSource(), DEFAULT_RADIUS))
+                                .then(Commands.argument("radius", IntegerArgumentType.integer(1, 512))
+                                        .executes(context -> info(context.getSource(), IntegerArgumentType.getInteger(context, "radius")))))
                         .then(Commands.literal("scan")
                                 .requires(source -> source.hasPermission(2))
                                 .executes(context -> scan(context.getSource(), QcScanService.DEFAULT_RADIUS))
@@ -56,25 +60,59 @@ public final class QcCommands {
                                         .executes(context -> forget(context.getSource(), IntegerArgumentType.getInteger(context, "radius"))))));
     }
 
-    private static int info(CommandSourceStack source) {
+    /**
+     * Counts the records round the source with the same radius and shape as {@code /qc forget}, so
+     * {@code /qc info 20} shows exactly what {@code /qc forget 20} would drop; for a player it also
+     * says how many steps {@code /qc undo} and {@code /qc redo} hold.
+     */
+    private static int info(CommandSourceStack source, int radius) {
         ServerLevel world = source.getLevel();
         ResourceLocation dimension = world.dimension().location();
         Map<BlockPos, QcUnitRecord> units = QcUnitIndex.get(world).units(dimension);
 
         BlockPos pos = BlockPos.containing(source.getPosition());
-        int nearby = 0;
-        for (BlockPos origin : units.keySet()) {
-            if (origin.closerThan(pos, INFO_RADIUS)) {
-                nearby++;
+        List<QcUnitRecord> nearby = new ArrayList<>();
+        for (Map.Entry<BlockPos, QcUnitRecord> unit : units.entrySet()) {
+            if (unit.getKey().closerThan(pos, radius)) {
+                nearby.add(unit.getValue());
             }
         }
 
         int total = units.size();
-        int close = nearby;
-        source.sendSuccess(() -> Component.literal(total + " QC unit(s) in " + dimension), false);
-        source.sendSuccess(() -> Component.literal(close + " within " + INFO_RADIUS + " blocks of " + pos.getX() + " " + pos.getY()
-                + " " + pos.getZ()), false);
+        source.sendSuccess(() -> Component.literal(total + " QC unit record(s) in " + dimension), false);
+        source.sendSuccess(() -> Component.literal("within " + radius + " blocks of " + pos.getX() + " " + pos.getY()
+                + " " + pos.getZ() + ": " + summary(nearby)), false);
+        if (source.getEntity() instanceof ServerPlayer player) {
+            int undo = QcUndoService.depth(player);
+            int redo = QcUndoService.redoDepth(player);
+            source.sendSuccess(() -> Component.literal("/qc undo: " + undo + " step(s), /qc redo: " + redo + " step(s)"), false);
+        }
         return total;
+    }
+
+    /**
+     * One line describing {@code records}: building units (how many an apply built from a plan, which
+     * later parts join on, and how many with a door the scan found) and road cells.
+     */
+    static String summary(Collection<QcUnitRecord> records) {
+        if (records.isEmpty()) {
+            return "no QC unit records (/qc scan reads standing buildings)";
+        }
+        int buildings = 0, planned = 0, doors = 0, roads = 0;
+        for (QcUnitRecord record : records) {
+            if (!record.isBuilding()) {
+                roads++;
+                continue;
+            }
+            buildings++;
+            if (record.part() != 0) planned++;
+            if (record.doors() != 0) doors++;
+        }
+        List<String> details = new ArrayList<>();
+        if (planned > 0) details.add(planned + " built from plans");
+        if (doors > 0) details.add(doors + " with a door");
+        return buildings + " building unit(s)" + (details.isEmpty() ? "" : " (" + String.join(", ", details) + ")")
+                + ", " + roads + " road cell(s)";
     }
 
     private static int scan(CommandSourceStack source, int radius) {

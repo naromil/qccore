@@ -85,6 +85,8 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
    doors on the ground floor and the road cells in front (a laid 7x7 floor, never plain terrain). Units the
    mod built itself keep their record. It only reads the world. **/qc forget [radius]** (default 64) drops every record round you, scanned or
    built by the mod (a plan-built part then no longer joins its next part); **/qc undo** brings them back.
+   **/qc info [radius]** (default 64) counts the records the same forget would drop (building units, how many
+   built from plans, road cells) and says how many steps **/qc undo** and **/qc redo** hold.
    New plans then use what it found: with nothing planned yet the editor settles on the scanned grid, a road
    you plan next to a scanned street runs into it (the mouth between them is paved and the lanes carry on,
    nothing is written over the old street), road furniture stays out of a scanned door's approach, and the
