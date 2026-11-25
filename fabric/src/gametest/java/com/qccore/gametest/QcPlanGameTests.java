@@ -516,6 +516,54 @@ public class QcPlanGameTests implements FabricGameTest {
         before.forEach((origin, record) -> QcUnitIndex.get(world).put(dimension, origin, record));
     }
 
+    /**
+     * {@code /qc forget} drops index records only; the player's forget goes on the undo stack, so
+     * {@code /qc undo} puts the records back unchanged (design signature included) and
+     * {@code /qc redo} forgets them again. A record outside the radius is never touched.
+     */
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void forgetIsUndoable(GameTestHelper ctx) {
+        ServerLevel world = ctx.getLevel();
+        ResourceLocation dimension = world.dimension().location();
+        BlockPos center = ctx.absolutePos(BlockPos.ZERO).offset(0, 40, 900);
+        clearIndex(world, center);
+        QcUnitIndex index = QcUnitIndex.get(world);
+        QcUnitRecord house = new QcUnitRecord(center, 3, 0, QcUnitRecord.BUILDING, 1, 4242);
+        QcUnitRecord road = new QcUnitRecord(center.offset(8, 0, 0), 0, 0, QcUnitRecord.ROAD, 0);
+        QcUnitRecord far = new QcUnitRecord(center.offset(0, 0, 40), 0, 0, QcUnitRecord.BUILDING, 0, 7);
+        for (QcUnitRecord r : List.of(house, road, far)) {
+            index.put(dimension, r.origin(), r);
+        }
+        ServerPlayer player = ctx.makeMockServerPlayerInLevel();
+
+        Map<BlockPos, QcUnitRecord> forgotten = index.removeWithin(dimension, center, 20);
+        if (!forgotten.keySet().equals(Set.of(house.origin(), road.origin()))) {
+            throw new AssertionError("forget took " + forgotten.keySet());
+        }
+        QcUndoService.pushForgotten(player, dimension, forgotten);
+        if (index.units(dimension).containsKey(house.origin()) || !far.equals(index.units(dimension).get(far.origin()))) {
+            throw new AssertionError("forget left the near records or dropped the far one");
+        }
+
+        QcResult undo = QcUndoService.undo(player);
+        if (!undo.ok() || !undo.message().startsWith("undid the last forget (2 unit record(s) back")) {
+            throw new AssertionError("undo of a forget: " + undo.message());
+        }
+        if (!house.equals(index.units(dimension).get(house.origin())) || !road.equals(index.units(dimension).get(road.origin()))) {
+            throw new AssertionError("undo did not restore the forgotten records as they were");
+        }
+
+        QcResult redo = QcUndoService.redo(player);
+        if (!redo.ok() || index.units(dimension).containsKey(house.origin()) || index.units(dimension).containsKey(road.origin())) {
+            throw new AssertionError("redo did not forget the records again: " + redo.message());
+        }
+        if (!far.equals(index.units(dimension).get(far.origin()))) {
+            throw new AssertionError("undo/redo touched the record outside the radius");
+        }
+        clearIndex(world, center);
+        ctx.succeed();
+    }
+
     private static void clearIndex(ServerLevel world, BlockPos center) {
         QcUnitIndex index = QcUnitIndex.get(world);
         ResourceLocation dimension = world.dimension().location();

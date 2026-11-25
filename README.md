@@ -83,7 +83,8 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
    hand, by worldedit's qckit or before the mod was installed, and adds them to the mod's unit memory: the
    grid they sit on, every unit whose twelve framework edges are built, wall/gate/open between neighbours,
    doors on the ground floor and the road cells in front (a laid 7x7 floor, never plain terrain). Units the
-   mod built itself keep their record. It only reads the world; `/qc forget` drops what it added.
+   mod built itself keep their record. It only reads the world. **/qc forget [radius]** (default 64) drops every record round you, scanned or
+   built by the mod (a plan-built part then no longer joins its next part); **/qc undo** brings them back.
    New plans then use what it found: with nothing planned yet the editor settles on the scanned grid, a road
    you plan next to a scanned street runs into it (the mouth between them is paved and the lanes carry on,
    nothing is written over the old street), road furniture stays out of a scanned door's approach, and the

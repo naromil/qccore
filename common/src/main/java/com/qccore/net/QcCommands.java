@@ -13,8 +13,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 import com.qccore.world.QcUnitRecord;
@@ -22,7 +20,8 @@ import com.qccore.world.QcUnitRecord;
 /**
  * The {@code /qc} command: what the index knows, how to scan standing QC units into it, how to forget a
  * region of it and how to undo and redo applied plans. Every child needs permission level 2; {@code info}, {@code scan} and {@code forget} work from
- * the dedicated server console as well, {@code undo} and {@code redo} need a player.
+ * the dedicated server console as well, {@code undo} and {@code redo} need a player. A player's
+ * {@code forget} is undoable like an apply; one from the console is not.
  */
 public final class QcCommands {
 
@@ -118,21 +117,24 @@ public final class QcCommands {
     private static int forget(CommandSourceStack source, int radius) {
         ServerLevel world = source.getLevel();
         ResourceLocation dimension = world.dimension().location();
-        QcUnitIndex index = QcUnitIndex.get(world);
         BlockPos pos = BlockPos.containing(source.getPosition());
-
-        List<BlockPos> forgotten = new ArrayList<>();
-        for (BlockPos origin : index.units(dimension).keySet()) {
-            if (origin.closerThan(pos, radius)) {
-                forgotten.add(origin);
-            }
-        }
-        for (BlockPos origin : forgotten) {
-            index.remove(dimension, origin);
-        }
+        Map<BlockPos, QcUnitRecord> forgotten = QcUnitIndex.get(world).removeWithin(dimension, pos, radius);
 
         int count = forgotten.size();
-        source.sendSuccess(() -> Component.literal("forgot " + count + " QC unit(s)"), false);
+        boolean undoable = count > 0 && source.getEntity() instanceof ServerPlayer;
+        if (source.getEntity() instanceof ServerPlayer player) {
+            QcUndoService.pushForgotten(player, dimension, forgotten);
+        }
+        // Clients keep the records they were last pushed: without a fresh push the overlay, the
+        // preview and road/part joins would go on using what was just forgotten.
+        if (count > 0) {
+            for (ServerPlayer player : world.players()) {
+                QcServerNetworking.push(player);
+            }
+        }
+        String message = "forgot " + count + " QC unit(s) within " + radius + " blocks"
+                + (undoable ? " (/qc undo brings them back)" : "");
+        source.sendSuccess(() -> Component.literal(message), false);
         return count;
     }
 }

@@ -51,6 +51,32 @@ public final class QcUnitIndex extends SavedData {
         setDirty();
     }
 
+    /**
+     * Drops every record of {@code dimension} whose origin lies within {@code radius} blocks of
+     * {@code center}, buildings and roads alike.
+     *
+     * @return the dropped records by origin, so the caller can offer an undo
+     */
+    public Map<BlockPos, QcUnitRecord> removeWithin(ResourceLocation dimension, BlockPos center, int radius) {
+        Map<BlockPos, QcUnitRecord> removed = new LinkedHashMap<>();
+        Map<BlockPos, QcUnitRecord> units = byDimension.get(dimension);
+        if (units == null) {
+            return removed;
+        }
+        Iterator<Map.Entry<BlockPos, QcUnitRecord>> iterator = units.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<BlockPos, QcUnitRecord> entry = iterator.next();
+            if (entry.getKey().closerThan(center, radius)) {
+                removed.put(entry.getKey(), entry.getValue());
+                iterator.remove();
+            }
+        }
+        if (!removed.isEmpty()) {
+            setDirty();
+        }
+        return removed;
+    }
+
     public int totalUnits() {
         int total = 0;
         for (Map<BlockPos, QcUnitRecord> units : byDimension.values()) {

@@ -18,7 +18,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * World undo and redo for applied plans, legacy builds and aligns, per player and in memory only (it does not survive a
+ * World undo and redo for applied plans, legacy builds, aligns and {@code /qc forget}, per player and in memory only (it does not survive a
  * restart).
  *
  * <p>Each entry holds the block states a change overwrote, first state per position, and the index
@@ -50,6 +50,17 @@ public final class QcUndoService {
     static void push(ServerPlayer player, Entry entry) {
         REDO.remove(player.getUUID());
         pushTrimmed(HISTORY, player.getUUID(), entry);
+    }
+
+    /**
+     * Records a {@code /qc forget}: only the dropped index records, no blocks, so {@code /qc undo}
+     * puts them back (with their design signatures and road styles) and {@code /qc redo} forgets
+     * them again. Like an apply, it drops everything redoable.
+     */
+    public static void pushForgotten(ServerPlayer player, ResourceLocation dimension, Map<BlockPos, QcUnitRecord> records) {
+        if (!records.isEmpty()) {
+            push(player, new Entry(dimension, Map.of(), new LinkedHashMap<>(records)));
+        }
     }
 
     private static void pushTrimmed(Map<UUID, Deque<Entry>> stacks, UUID player, Entry entry) {
@@ -102,7 +113,11 @@ public final class QcUndoService {
         }
         history.pop();
         pushTrimmed(REDO, player.getUUID(), swap(world, entry));
-        LOGGER.info("qccore: {} undid an apply of {} block(s) in {}", player.getName().getString(), entry.blocks().size(), dimension);
+        LOGGER.info("qccore: {} undid a change of {} block(s), {} record(s) in {}", player.getName().getString(), entry.blocks().size(), entry.records().size(), dimension);
+        if (entry.blocks().isEmpty()) {
+            return new QcResult(true, "undid the last forget (" + entry.records().size() + " unit record(s) back, "
+                    + history.size() + " more to undo; /qc redo forgets them again)");
+        }
         return new QcResult(true, "undid the last apply (" + entry.blocks().size() + " block(s) restored, "
                 + history.size() + " more to undo; /qc redo puts it back)");
     }
@@ -124,7 +139,11 @@ public final class QcUndoService {
         }
         redo.pop();
         pushTrimmed(HISTORY, player.getUUID(), swap(world, entry));
-        LOGGER.info("qccore: {} redid an apply of {} block(s) in {}", player.getName().getString(), entry.blocks().size(), dimension);
+        LOGGER.info("qccore: {} redid a change of {} block(s), {} record(s) in {}", player.getName().getString(), entry.blocks().size(), entry.records().size(), dimension);
+        if (entry.blocks().isEmpty()) {
+            return new QcResult(true, "forgot the " + entry.records().size() + " unit record(s) again ("
+                    + redo.size() + " more to redo)");
+        }
         return new QcResult(true, "redid the last undone apply (" + entry.blocks().size() + " block(s) written, "
                 + redo.size() + " more to redo)");
     }
