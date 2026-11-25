@@ -47,6 +47,9 @@ public class QcToolsScreen extends Screen {
 
 	public QcToolsScreen() {
 		super(Component.translatable("qccore.screen.tools"));
+		// B can come before the first G after a launch: bring back the saved styles here too, so the
+		// block chooser shows them and its save on close doesn't start from an empty set
+		QcSavedStyles.restoreOnceAndSay(QcClientState.plan.styles());
 	}
 
 	@Override

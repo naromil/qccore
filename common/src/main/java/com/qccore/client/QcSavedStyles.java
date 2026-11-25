@@ -71,9 +71,17 @@ public final class QcSavedStyles {
 		return added;
 	}
 
-	/** Writes the plan's styles; a failure is logged and never interrupts the player. */
+	/**
+	 * Writes the plan's styles; a failure is logged and never interrupts the player. The saved file is
+	 * read in first if this launch has not read it yet: the chooser can be opened from B before the
+	 * first G, and writing then would replace the styles kept from last time with an empty set.
+	 */
 	public static void save(Map<String, BlockChoice> styles) {
-		Path file = file();
+		restoreOnce(styles);
+		write(file(), styles);
+	}
+
+	static void write(Path file, Map<String, BlockChoice> styles) {
 		try {
 			Files.createDirectories(file.getParent());
 			Path tmp = file.resolveSibling(FILE + ".tmp");
@@ -81,6 +89,17 @@ public final class QcSavedStyles {
 			Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
 		} catch (IOException | RuntimeException e) {
 			QCCore.LOGGER.warn("qccore: could not save the styles to {}: {}", file, e.getMessage());
+		}
+	}
+
+	/**
+	 * {@link #restoreOnce} with a word for the player when anything came back. Called by every way
+	 * into the plan's styles (G, and the B screen that leads to the block chooser).
+	 */
+	public static void restoreOnceAndSay(Map<String, BlockChoice> target) {
+		int restored = restoreOnce(target);
+		if (restored > 0) {
+			QcClientState.say("QC: " + restored + " style(s) restored with the blocks you chose last time (Blocks…)");
 		}
 	}
 
@@ -93,7 +112,11 @@ public final class QcSavedStyles {
 			return 0;
 		}
 		restored = true;
-		Path file = file();
+		return read(file(), target);
+	}
+
+	/** Adds the styles saved in {@code file} that {@code target} lacks; 0 when missing or unreadable. */
+	static int read(Path file, Map<String, BlockChoice> target) {
 		if (!Files.isRegularFile(file)) {
 			return 0;
 		}

@@ -77,7 +77,7 @@ public final class QcInteraction {
 		if (client.player == null || client.level == null) {
 			return;
 		}
-		int restored = QcSavedStyles.restoreOnce(QcClientState.plan.styles());
+		QcSavedStyles.restoreOnceAndSay(QcClientState.plan.styles());
 		if (QcClientState.anchor != null && !QcClientState.plan.isEmpty()) {
 			QcClientState.active = true;
 			QcClientState.dimension = client.level.dimension().location();
@@ -92,9 +92,6 @@ public final class QcInteraction {
 		QcClientState.active = true;
 		QcClientState.dimension = client.level.dimension().location();
 		adoptNearbyLattice();
-		if (restored > 0) {
-			QcClientState.say("QC: " + restored + " style(s) restored with the blocks you chose last time (Blocks…)");
-		}
 		QcClientState.changed();
 	}
 
