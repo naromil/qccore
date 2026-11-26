@@ -232,6 +232,9 @@ Server/client split:
   outside the cells when built alone (`Join.alone`) and the joined build no longer writes, only where the
   block is still exactly that. Gametest `aNewPartJoinsTheStandingPartOfItsBuilding`: a house applied in two
   halves equals the house applied at once, and a house of another design next door is untouched.
+  The block preview shows that rebuild (T28): a ghost replacing a standing block is drawn a hair larger so it
+  shows over it, and what the apply takes down from rebuilt parts (`QcBlockPreview.takenDown`: the cell clear, the
+  `QcPlanService.stale` left-overs, old furniture in a rebuilt road's headroom) is drawn red, counted on the HUD.
 - `/qc scan [radius]` = `QcScanService` (server, read-only towards the world) over the registry-free
   `core/scan/QcScanner`: it reads the box (radius 8..64, 16 below to 40 above) once, picks the one of the 512
   grid offsets that explains the most building units (all 12 framework edges built, terrain blocks counting as

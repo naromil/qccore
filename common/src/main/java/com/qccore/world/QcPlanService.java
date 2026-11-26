@@ -25,6 +25,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
@@ -185,9 +186,10 @@ public final class QcPlanService {
     /**
      * Blocks the rebuilt standing part wrote outside the cells when it was built alone (eaves, roof
      * ends, facade pieces) that the joined build no longer writes. Only blocks still exactly as that
-     * build left them are taken back; inside the plan's unit cells the footprint clear does it.
+     * build left them are taken back; inside the plan's unit cells the footprint clear does it. Also
+     * used by the client's block preview to show what an apply would take down.
      */
-    private static List<BlockPos> stale(ServerLevel world, QcPlan plan, Set<Cell> rebuilt, BlockPalette palette,
+    public static List<BlockPos> stale(BlockGetter world, QcPlan plan, Set<Cell> rebuilt, BlockPalette palette,
             BlockPos anchor, Surroundings around, PlanCompiler.Compiled joined) {
         Set<BlockPos> cells = new HashSet<>(fullOrigins(plan, anchor));
         List<BlockPos> out = new ArrayList<>();
@@ -202,7 +204,8 @@ public final class QcPlanService {
         return out;
     }
 
-    private static boolean insideCells(Set<BlockPos> origins, BlockPos pos, BlockPos anchor) {
+    /** Whether {@code pos} lies in the 9x9x9 box (shared planes included) of a cell with one of these origins. */
+    public static boolean insideCells(Set<BlockPos> origins, BlockPos pos, BlockPos anchor) {
         int x = Math.floorDiv(pos.getX() - anchor.getX(), 8), y = Math.floorDiv(pos.getY() - anchor.getY(), 8),
                 z = Math.floorDiv(pos.getZ() - anchor.getZ(), 8);
         for (int dx = 0; dx >= -1; dx--) {

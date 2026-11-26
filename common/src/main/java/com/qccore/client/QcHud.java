@@ -105,7 +105,9 @@ public final class QcHud {
 			rows.add(new Row("mods", modifiers, QcUi.WARN));
 		}
 		rows.add(new Row("plan", QcUi.planSummary(), QcUi.TEXT));
-		rows.add(new Row("blocks", QcBlockPreview.size() + "  ·  ghosts " + (QcClientState.blockPreview ? "on" : "off"), QcUi.MUTED));
+		int takenDown = QcBlockPreview.removedCount();
+		rows.add(new Row("blocks", QcBlockPreview.size() + (takenDown > 0 ? "  ·  " + takenDown + " removed (red)" : "")
+				+ "  ·  ghosts " + (QcClientState.blockPreview ? "on" : "off"), QcUi.MUTED));
 		rows.add(new Row("cursor", cursorText(client), QcUi.MUTED));
 		rows.add(new Row("lattice", latticeText(), QcUi.MUTED));
 		return rows;
