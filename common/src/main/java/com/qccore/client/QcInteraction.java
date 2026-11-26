@@ -47,7 +47,6 @@ public final class QcInteraction {
 	private static final String FACE_MESSAGE = "QC: look at a side face to place walls";
 	private static final String PAIR_MESSAGE = "QC: both QC units must exist to attach a wall";
 	private static final String GATE_MESSAGE = "QC: no wall on this face; Shift+RMB sets one, then Ctrl+RMB makes it a gate";
-	private static final String NO_UNIT_MESSAGE = "QC: no placed QC Unit in the crosshair";
 	private static final String WORLD_MESSAGE = "QC: editor reset (changed dimension)";
 
 	/** How close a reported unit has to be before the anchor adopts its lattice. */
@@ -59,10 +58,9 @@ public final class QcInteraction {
 	/**
 	 * Where the crosshair points, in session unit coordinates. {@code layer} is the layer the editor
 	 * works on: for a placing tool aimed at a block's top face, the layer whose floor plane is nearest
-	 * that block ({@link Alignment#nearestLayer}), otherwise the aimed block's own layer, which is
-	 * always {@code hitLayer}.
+	 * that block ({@link Alignment#nearestLayer}), otherwise the aimed block's own layer.
 	 */
-	public record Cursor(UnitPos cell, int layer, int hitLayer, @Nullable Direction face, boolean blockHit) {
+	public record Cursor(UnitPos cell, int layer, @Nullable Direction face, boolean blockHit) {
 	}
 
 	private QcInteraction() {
@@ -174,7 +172,7 @@ public final class QcInteraction {
 		int layer = blockHit && face == Direction.UP && isPlacingTool(QcClientState.tool)
 				? Alignment.nearestLayer(reference.getY(), anchor.getY())
 				: hitLayer;
-		return new Cursor(cell, layer, hitLayer, face, blockHit);
+		return new Cursor(cell, layer, face, blockHit);
 	}
 
 	/**
@@ -526,9 +524,6 @@ public final class QcInteraction {
 		while (QcKeys.config.consumeClick()) {
 			client.setScreen(new QcConfigScreen());
 		}
-		while (QcKeys.unitAlign.consumeClick()) {
-			align(client);
-		}
 		while (QcKeys.overlay.consumeClick()) {
 			QcClientState.overlayVisible = !QcClientState.overlayVisible;
 		}
@@ -730,33 +725,6 @@ public final class QcInteraction {
 		setWallFlag(center, side, wallState);
 		setWallFlag(neighbour, opposite(side), wallState);
 		return true;
-	}
-
-	/** The reported unit the crosshair points at, if it is inside the cursor cell of its layer. */
-	@Nullable
-	private static QcUnitRecord crosshairUnit(Minecraft client) {
-		Cursor cursor = cursor(client);
-		BlockPos anchor = QcClientState.anchor;
-		if (cursor == null || anchor == null) {
-			return null;
-		}
-		// the unit actually hit, not the layer a placing tool would build on
-		BlockPos origin = anchor.offset(cursor.cell().x() * 8, cursor.hitLayer() * 8, cursor.cell().z() * 8);
-		for (QcUnitRecord record : QcClientState.nearbyUnits.values()) {
-			if (record.isBuilding() && record.origin().equals(origin)) {
-				return record;
-			}
-		}
-		return null;
-	}
-
-	private static void align(Minecraft client) {
-		QcUnitRecord target = crosshairUnit(client);
-		if (target == null) {
-			QcClientState.say(NO_UNIT_MESSAGE);
-			return;
-		}
-		client.setScreen(new QcAlignScreen(target));
 	}
 
 	private static boolean isPlacingTool(QcTool tool) {

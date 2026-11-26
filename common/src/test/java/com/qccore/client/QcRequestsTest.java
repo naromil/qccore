@@ -17,10 +17,10 @@ class QcRequestsTest {
     @Test
     void resultsAnswerRequestsInTheOrderTheyWereSent() {
         QcRequests requests = new QcRequests();
-        requests.expect(QcRequests.Kind.ALIGN, 3);
+        requests.expect(QcRequests.Kind.UNDO, 3);
         requests.expect(QcRequests.Kind.APPLY, 4);
-        // an align sent just before K: its result comes first and must not count as the apply's
-        assertEquals(QcRequests.Kind.ALIGN, requests.answered().kind());
+        // an undo sent just before K: its result comes first and must not count as the apply's
+        assertEquals(QcRequests.Kind.UNDO, requests.answered().kind());
         QcRequests.Pending apply = requests.answered();
         assertEquals(QcRequests.Kind.APPLY, apply.kind());
         assertEquals(4, apply.revision());

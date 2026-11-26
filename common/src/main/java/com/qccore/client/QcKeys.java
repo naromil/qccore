@@ -23,8 +23,6 @@ public final class QcKeys {
 	public static KeyMapping build;
 	/** Open {@link QcConfigScreen}. */
 	public static KeyMapping config;
-	/** Open {@link QcAlignScreen} for the targeted placed unit. */
-	public static KeyMapping unitAlign;
 	/** Toggle {@link QcClientState#overlayVisible}. */
 	public static KeyMapping overlay;
 	/** Open {@link QcToolsScreen}: tools, shapes, components, modifiers, plan. */
@@ -57,7 +55,6 @@ public final class QcKeys {
 		save = register("key.qccore.save", GLFW.GLFW_KEY_J);
 		build = register("key.qccore.build", GLFW.GLFW_KEY_K);
 		config = register("key.qccore.config", GLFW.GLFW_KEY_I);
-		unitAlign = register("key.qccore.unit_align", GLFW.GLFW_KEY_U);
 		overlay = register("key.qccore.overlay", GLFW.GLFW_KEY_O);
 		tools = register("key.qccore.tools", GLFW.GLFW_KEY_B);
 		shape = register("key.qccore.shape", GLFW.GLFW_KEY_V);

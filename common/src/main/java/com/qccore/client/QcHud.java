@@ -152,7 +152,6 @@ public final class QcHud {
 				{key(QcKeys.config), "components & lattice"},
 				{key(QcKeys.reanchor), "re-anchor here"},
 				{key(QcKeys.duplicateLayer), "duplicate layer up"},
-				{key(QcKeys.unitAlign), "align placed unit"},
 				{key(QcKeys.editor), "leave the editor"},
 		};
 		List<Row> rows = new ArrayList<>();

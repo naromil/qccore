@@ -21,7 +21,7 @@ import java.util.function.Consumer;
 
 /**
  * The Fabric entry point: installs {@link QcPlatform}, registers one raw play channel per
- * client-to-server packet id ({@code qccore:build|align|plan|undo}) whose payload is exactly the
+ * client-to-server packet id ({@code qccore:build|plan|undo|redo}) whose payload is exactly the
  * record's {@code write}, {@code /qc}, and the join/leave/tick hooks of {@link QcServerNetworking}.
  */
 public class QCCoreFabric implements ModInitializer {

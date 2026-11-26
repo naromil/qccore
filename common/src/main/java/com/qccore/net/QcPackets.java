@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.function.Function;
 
 /**
- * The seven packets of the editor: build, align, plan-chunk, undo and redo requests from the client, the unit
+ * The six packets of the editor: build, plan-chunk, undo and redo requests from the client, the unit
  * index and a result message back to it.
  *
  * <p>The packets are loader-neutral records: each one writes itself to a {@link FriendlyByteBuf} and
@@ -60,27 +60,6 @@ public final class QcPackets {
         }
     }
 
-    /** Ask the server to move a placed building onto the lattice {@code (8x+a, 8y+b, 8z+c)}. */
-    public record QcAlignC2S(BlockPos unit, int a, int b, int c, CompoundTag palette) implements QcPacket {
-
-        public static final Type<QcAlignC2S> TYPE = new Type<>(QCCore.id("align"), QcAlignC2S.class,
-                buf -> new QcAlignC2S(buf.readBlockPos(), buf.readInt(), buf.readInt(), buf.readInt(), buf.readNbt()));
-
-        @Override
-        public void write(FriendlyByteBuf buf) {
-            buf.writeBlockPos(unit);
-            buf.writeInt(a);
-            buf.writeInt(b);
-            buf.writeInt(c);
-            buf.writeNbt(palette);
-        }
-
-        @Override
-        public Type<?> type() {
-            return TYPE;
-        }
-    }
-
     /** The units the server knows around a player: {@code {"units":[record, ...]}}. */
     public record QcIndexS2C(ResourceLocation dimension, CompoundTag units) implements QcPacket {
 
@@ -99,7 +78,7 @@ public final class QcPackets {
         }
     }
 
-    /** The outcome of a build or align request. */
+    /** The outcome of a build, apply, undo or redo request. */
     public record QcResultS2C(boolean ok, String message) implements QcPacket {
 
         public static final Type<QcResultS2C> TYPE = new Type<>(QCCore.id("result"), QcResultS2C.class,
@@ -174,7 +153,7 @@ public final class QcPackets {
     }
 
     /** Every client-to-server packet, in registration order (Forge discriminators follow it). */
-    public static final List<Type<?>> C2S = List.of(QcBuildC2S.TYPE, QcAlignC2S.TYPE, QcPlanC2S.TYPE, QcUndoC2S.TYPE, QcRedoC2S.TYPE);
+    public static final List<Type<?>> C2S = List.of(QcBuildC2S.TYPE, QcPlanC2S.TYPE, QcUndoC2S.TYPE, QcRedoC2S.TYPE);
 
     /** Every server-to-client packet, in registration order. */
     public static final List<Type<?>> S2C = List.of(QcIndexS2C.TYPE, QcResultS2C.TYPE);

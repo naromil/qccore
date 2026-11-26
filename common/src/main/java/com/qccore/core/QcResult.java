@@ -2,7 +2,7 @@ package com.qccore.core;
 
 import java.util.List;
 
-/** The outcome of a build or align request: whether it was applied and the message for the player. */
+/** The outcome of a build, apply or undo request: whether it was applied and the message for the player. */
 public record QcResult(boolean ok, String message) {
 
     /**

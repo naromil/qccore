@@ -78,7 +78,7 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
    **J** exports the plan as `.nbt` to the schematics folder, sparse by default, or with the clearing
    written as air. Saving over an existing file takes a second press.
 7. **M** toggles the ghost-block preview, **O** the wireframes, **I** opens the lattice, layout import
-   and the legacy QCSimple palette, **U** re-aligns a placed building.
+   and the legacy QCSimple palette.
 8. **/qc scan [radius]** (default 32, up to 64) finds QC buildings that already stand round you, built by
    hand, by worldedit's qckit or before the mod was installed, and adds them to the mod's unit memory: the
    grid they sit on, every unit whose twelve framework edges are built, wall/gate/open between neighbours,

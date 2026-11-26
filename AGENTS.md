@@ -4,8 +4,7 @@ QCCore is a **Minecraft 1.20.1 mod for Fabric and Forge** (mod id `qccore`, pack
 from one loader-neutral code base in Mojang's names (see *Multi-loader layout* below). It is an in-world editor for QC
 buildings: players build a multi-layer **plan** with the crosshair (Effortless-Building-style tools and shapes,
 keybinds, wireframes and ghost blocks) out of **buildings** and **roads**, choose the blocks of every role in a block
-chooser, then export it as a vanilla structure `.nbt` or, in creative, apply it to the world in one undoable step and
-re-align whole buildings to `(8x+a, 8y+b, 8z+c)`.
+chooser, then export it as a vanilla structure `.nbt` or, in creative, apply it to the world in one undoable step.
 
 **The QC rules come from qckit, not QCSimple.** The newest rules live in the user's `naromil/worldedit` repo
 (`~/Tools/worldedit`: `builds/QCSYSTEM.md`, the `quarterchunk-buildings` skill, `quarterchunk/qckit/` - `building.py`,
@@ -30,8 +29,8 @@ the original QCSimple-port spec, is no longer in the repo.)
 ## Project Overview
 
 - **Purpose:** crosshair editing of qckit buildings and roads. There is no 2D editor screen; the GUI is
-  the IO/config screens (`QcConfigScreen` = lattice + layouts + legacy palette, `QcFileBrowserScreen`, `QcSaveScreen`,
-  `QcAlignScreen`) plus the planning screens (`QcToolsScreen` hub on B with the Building panel, `QcDesignScreen`
+  the IO/config screens (`QcConfigScreen` = lattice + layouts + legacy palette, `QcFileBrowserScreen`, `QcSaveScreen`)
+  plus the planning screens (`QcToolsScreen` hub on B with the Building panel, `QcDesignScreen`
   template/roof/facades/piers/partition/doors/lights of the active building, `QcBlockChooserScreen` styles x roles with
   kits, batch presets (`core/qc/Presets`) and a live 3D sample of the style (hovering a role row lights that role's blocks), `QcBlockPickerScreen` searchable block grid, `QcTemplateScreen` with a
   3D preview in default blocks; both previews are `QcSceneView`). All of them and `QcHud` share the flat
@@ -75,7 +74,7 @@ the original QCSimple-port spec, is no longer in the repo.)
   (`QcBuildService`, `UnitLayers` keyed `dy + 1` on import) still refuses layers below 1. A placing tool (units, template) aimed at a block's
   **top face** works on the layer whose floor plane is nearest that block (`Alignment.nearestLayer`: local y 0..4 →
   that layer, 5..7 → the one above; user's rule, review #14); side faces and misses use the aimed block's layer, and
-  the lattice itself never moves for terrain. `Cursor.hitLayer` keeps the aimed block's layer for the align key.
+  the lattice itself never moves for terrain.
 - **Legacy nine components** (QCSimple, `qcsimple` template only) in `core/palette/`, fixed order `frameworkBlock, rowBlock, columnBlock, wallBlock,
   floorBlock` (block ids, seeded by `Defaults.applyTo` with `polished_deepslate`, `chiseled_deepslate`, `spruce_log`,
   `deepslate_tiles`, `spruce_planks`) then `innerWall, gate, outerWall` (all `deepslate_bricks`) and `innerColumn`
@@ -97,7 +96,7 @@ blocks).
 **Export** (layers -> components -> `.nbt`):
 
 ```
-QcClientState.layers (client) / UnitLayers built by QcBuildService|QcAlignService (server)
+QcClientState.layers (client) / UnitLayers built by QcBuildService (server)
   -> UnitBlockConverter.convertLayersToBlockMap(layers, palette, origin)
        -> UnitExporter.export(...)                    // walks layers x units
             ctx.beginUnit(dx, dy, dz, layerMap)
@@ -145,7 +144,7 @@ Seams, in both directions:
   `sendToPlayer(player, packet)`), whose `Services` each loader entry point installs first thing.
 - **loader -> common:** plain hooks. Server: `QcServerNetworking.handle(player, packet)` (game thread),
   `onJoin`, `onLeave`, `onServerTick(server)`; `QcCommands.register(dispatcher)`. Client: `QCCoreClient.handle(packet)`
-  (client thread), `QcKeys.create()` (the fourteen `KeyMapping`s to register), `QcInteraction.onClientTick(client)`,
+  (client thread), `QcKeys.create()` (the thirteen `KeyMapping`s to register), `QcInteraction.onClientTick(client)`,
   `QcOverlayRenderer.render(poseStack, camera)` after the translucent terrain, `QcHud.render(graphics, partialTick)`,
   `QcInteraction.click(useKey)` for mouse input.
 
@@ -171,11 +170,8 @@ Server/client split:
 - The loader entry points (`QCCoreFabric`/`QCCoreForge`, `QCCoreFabricClient`/`QCCoreForgeClient`) register the
   hooks above; `QCCore` (common) only holds `MOD_ID`, `LOGGER`, `id(String)`.
 - `QcBuildService.build` validates, then clears the footprint, writes the layout and registers one `QcUnitIndex`
-  record per unit. `QcAlignService.align` is creative-gated, prunes, BFS-walks the connected building over
-  `origin.offset(dir, 8)` (cap 4096), refuses a building with any plan-applied cell (`part != 0`: rebuilding a qckit
-  building from flags with the legacy palette would replace its design), clears the *old* footprint before rebuilding
-  at the shifted anchor and re-keys the records. Both record their blocks and records in `QcUndoService` like a plan
-  apply, so `/qc undo` reverts a legacy build or an align. Both return `QcResult(ok, message)`, both run on the server thread - the loader glue hops onto it
+  record per unit. It records its blocks and records in `QcUndoService` like a plan apply, so `/qc undo` reverts a
+  legacy build. It returns `QcResult(ok, message)` and runs on the server thread - the loader glue hops onto it
   (`server.execute(...)` on Fabric, `consumerMainThread` on Forge), and onto the client thread for S2C packets.
 - `QcWorldOps` is the **only world-write seam**: `clearFootprint` (9x9x9 cell plus a 2-block shell outside every
   exposed side and top face, never below the floor; the shell clears only natural terrain (`QcWorldOps.natural`) and
@@ -194,11 +190,11 @@ Server/client split:
   (`QcServerNetworking.decode`), never with the unbounded `NbtIo.readCompressed`.
 - `QcUnitIndex extends SavedData`, state id `qccore_units`, holding
   `Map<ResourceLocation dimension, LinkedHashMap<BlockPos origin, QcUnitRecord>>`. `QcServerNetworking` pushes every unit
-  within 128 blocks of a player (nearest first, capped 4096) on join, after a successful build/align, and every 40
+  within 128 blocks of a player (nearest first, capped 4096) on join, after a successful build or apply, and every 40
   ticks once the player moved 16 blocks. A `QcUnitRecord` also has a `kind` (`BUILDING`, or `ROAD` for road
   cells a plan's apply laid or `/qc scan` found; apply keeps a building record standing at a road cell) and `doors` (side bits), stored as `k`/`d` only when non-zero so older records read
   back as door-less buildings. Road records are pushed (the block preview needs them) but never pruned,
-  drawn as units, targeted or walked by align: client code that wants building units checks `isBuilding()`.
+  or drawn as units: client code that wants building units checks `isBuilding()`.
 - Plans read the index through `core/plan/Surroundings` (registry-free: standing road cells, standing building
   cells + door sides in plan cells), built from records on the plan's lattice by `world/QcSurroundings.of(records, anchor)`: the
   server's apply uses the dimension's whole index, the client's block preview the pushed records, the `.nbt`
@@ -251,16 +247,16 @@ Server/client split:
   undoable step, settings kept via `QcPlan.emptied`), since its units and roads now stand in the world and a second K
   would build them again; a plan edited while the apply was on its way (`QcHistory.revision` moved) is kept, and K
   refuses to send the same revision again while its apply is still waiting (`QcRequests.waiting`). The result
-  packet doesn't say what it answers, so `QcRequests` queues every apply/align/undo/redo request sent and the server
-  answers each with exactly one result, in order: keep it that way, or tag the result packet. `QcKeys` holds fourteen keybinds (G editor, Y re-anchor, H duplicate
-  layer, J export, K apply, I components, U align, O overlay, B tools, V shape, N tool, Z undo/Shift redo, R turn
+  packet doesn't say what it answers, so `QcRequests` queues every apply/undo/redo request sent and the server
+  answers each with exactly one result, in order: keep it that way, or tag the result packet. `QcKeys` holds thirteen keybinds (G editor, Y re-anchor, H duplicate
+  layer, J export, K apply, I components, O overlay, B tools, V shape, N tool, Z undo/Shift redo, R turn
   template, M ghosts) in category `key.categories.qccore`. Input arrives through the loader glue (Fabric `MinecraftClientMixin`,
   Forge input events, see the table above) while a session is active and no screen is open, forwarding to
   `QcInteraction.click(...)`.
 
-Seven packets in `net/QcPackets`, all loader-neutral `QcPacket` records (`write(FriendlyByteBuf)` plus a static
+Six packets in `net/QcPackets`, all loader-neutral `QcPacket` records (`write(FriendlyByteBuf)` plus a static
 `Type` = channel id, class, reader), listed in `QcPackets.C2S`/`S2C` for the loader glue to register:
-`QcBuildC2S` (`qccore:build`, kept for compatibility; the K key now sends a plan), `QcAlignC2S` (`qccore:align`),
+`QcBuildC2S` (`qccore:build`, kept for compatibility; the K key now sends a plan),
 `QcPlanC2S` (`qccore:plan`), `QcUndoC2S` (`qccore:undo`), `QcRedoC2S` (`qccore:redo`), `QcIndexS2C` (`qccore:index`) and
 `QcResultS2C` (`qccore:result`). Wire formats:
 
@@ -287,7 +283,7 @@ Bit layout of `w`/`g`, identical in `LayersCodec`, `QcUnitRecord` and `QcOverlay
 | `common/src/main/java/com/qccore/core/` | algorithm layer: `UnitLayers`/`QcUnit`/`UnitPos`/`UnitSide`, `SpatialUtils`, `Alignment`, converter/exporter/importer, both contexts |
 | `common/src/main/java/com/qccore/core/nbt/` | `StructureNbt`, `LayersCodec`, `PaletteCodec` |
 | `common/src/main/java/com/qccore/core/palette/` | the nine components, `UnitComponent`/`QcComponent`/`BlockComponent`, `BlockPalette`, `Defaults`, `InnerStructure` |
-| `common/src/main/java/com/qccore/world/` | `QcBuildService`, `QcAlignService`, `QcWorldOps`, `QcUnitIndex`, `QcUnitRecord` |
+| `common/src/main/java/com/qccore/world/` | `QcBuildService`, `QcWorldOps`, `QcUnitIndex`, `QcUnitRecord` |
 | `common/src/main/java/com/qccore/net/` | `QcPackets`, `QcServerNetworking`, `QcCommands` |
 | `common/src/main/resources/` | `assets/qccore/{icon.png,lang/en_us.json}` |
 | `fabric/src/main/` | `com.qccore.fabric` glue + `fabric.mod.json`, `qccore.client.mixins.json` |
@@ -353,7 +349,7 @@ dumps of a failing golden test). Loom's wiring adds `acceptGameTestEula`/`delete
   that wording is user-visible contract. `IllegalStateException`/`IllegalArgumentException` for programming errors
   (`"No framework block found"` in `FrameworkBlock.detectGrid`, `"missing 'size'"` in `StructureNbt.parseStructure`).
   `UncheckedIOException` for file IO. No exception crosses the network boundary: both server receivers catch
-  `RuntimeException` and reply `QcResultS2C(false, "the build request was malformed")` / `"…align…"`.
+  `RuntimeException` and reply `QcResultS2C(false, "the build request was malformed")`.
 - **Javadoc:** class-level Javadoc with `<p>` paragraphs and `{@link}` on every non-trivial type, short `/** … */` on
   public methods carrying a contract, numbered step comments inside long methods (`// 1. Guessing the framework block
   and the grid origin`). The bit layout and the `boundaryCount` contract live in the Javadoc they belong to.
@@ -428,7 +424,6 @@ Paths are relative to `common/src/main/java/com/qccore/`, except where a project
 | File | Role |
 |---|---|
 | `world/QcBuildService.java` | validates a build (creative, non-empty, <= 4096 units, `layer >= 1`, framework configured, component sizes, height fit) then applies it |
-| `world/QcAlignService.java` | BFS over the connected building, refuses plan-applied buildings, `Alignment.nearestDelta` per axis, clears the old footprint (recorded for undo), rebuilds at the shifted anchor, re-keys the index |
 | `world/QcWorldOps.java` | the only world-write seam: `clearFootprint` (cell + 2-block natural-terrain shell, sides and top), `placeBlocks`, `fits`, with `Block.UPDATE_ALL \| Block.UPDATE_KNOWN_SHAPE` |
 | `world/QcUnitIndex.java` | the `qccore_units` `SavedData`: per-dimension `BlockPos -> QcUnitRecord`; `prune` drops records whose origin block is air |
 | `core/UnitExporter.java` | the export walk; owns the component call order and the `LinkedHashMap` block map |
@@ -461,7 +456,7 @@ Mojang names), so anything touching `BuiltInRegistries.BLOCK` is a gametest inst
 | Suite | Files | Covers |
 |---|---|---|
 | JUnit, 44 tests | `AlignmentTest`, `IndexNbtTest`, `LayersCodecTest`, `plan/BuildShapeTest`, `plan/QcPlanTest`, `plan/RoadKitTest`, `plan/RoadJoinTest`, `qc/DistrictTest`, `net/PlanRequestDecodeTest`, `client/QcHistoryTest`, `client/QcRequestsTest`, `client/QcUseGateTest` | the qckit port: a house's frame/floor/door/road/roof, every template x roof x pier kind builds with no missing role, unchosen roles reported together, fallbacks and optional roles, partition overrides (open = gate flag alone), shared planes between buildings, stripped templates and fresh building keys on stamping, pre-rework plans loading as one legacy building, decor on the road and never in a doorway, seeded, an empty decor style placing nothing; lattice math and residues; the index NBT round trip plus malformed state, a road record's style and the push writing each style once; the `w`/`g` bit layout and a playlist round trip; shapes and modifiers; partitions, rotation/mirror of flags, normalise/merge, `PlanCodec` round trip; the road contract (7 wide, lanes, joints, corner posts, medallion, plaza post, give-way); a road built in two applies equals one built at once, and a standing road keeps its own style; a plan request round-trips through the bounded inflate and a gzip bomb is refused; plan undo/redo depth, redo drop and the 100-step cap; a result is matched to the oldest pending request, the same plan is not sent twice while its apply waits, and an applied plan empties to its settings; one fresh press is one shape point |
-| Gametests, 14 tests | `QcGameTests`, `QcPlanGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, an align moves the building and `/qc undo` puts it back, an align of a plan-applied building is refused, layer 0 and non-creative are refused; a plan (full unit, framework-only unit, cleared cell, road) applies and records its road cells as roads, `/qc undo` restores every block and record, redo re-applies it, a second undo restores it again and a new apply drops the redo stack; plan refusals are user-visible; a qckit house applies with real block states (upright log posts, beams along their axis, a door on the road face, a hip roof, the road, street decor) and an empty style is refused naming its roles |
+| Gametests, 12 tests | `QcGameTests`, `QcPlanGameTests`, `StructureExportGoldenTest`, `StructureImportGoldenTest`, `PaletteCodecTest` | golden export/import parity; a build registers records, layer 0 and non-creative are refused; a plan (full unit, framework-only unit, cleared cell, road) applies and records its road cells as roads, `/qc undo` restores every block and record, redo re-applies it, a second undo restores it again and a new apply drops the redo stack; plan refusals are user-visible; a qckit house applies with real block states (upright log posts, beams along their axis, a door on the road face, a hip roof, the road, street decor) and an empty style is refused naming its roles |
 
 Golden mechanics: baselines are **classpath resources** (`/golden/unit-export-baseline.txt`) inside the test mod,
 so they never reach the shipped jar; comparison is exact, order-sensitive line equality after CRLF/CR -> LF
@@ -505,7 +500,7 @@ not mine it, RMB then LMB on an empty cell planned and erased a unit. Forge undo
 were not exercised in a client. The jars were checked to carry SRG (`m_…`) resp. intermediary (`method_…`) names.
 
 **Manual checklist (human required):** wall and gate plates on a shared face (blue, then green with Ctrl), a second
-layer placed 8 blocks up, `H` duplicating a layer, `Y` re-anchoring, the `U` align screen moving a placed building,
+layer placed 8 blocks up, `H` duplicating a layer, `Y` re-anchoring,
 `O` toggling the overlay, and the config screen's `Choose…` / `Load layout…` flows including a size-mismatch
 rejection.
 

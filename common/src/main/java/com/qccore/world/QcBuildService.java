@@ -130,7 +130,7 @@ public final class QcBuildService {
     }
 
     /**
-     * The palette checks shared by build and align: a configured framework block and valid
+     * The palette checks of a legacy build: a configured framework block and valid
      * component sizes. {@code null} when the palette may be built with.
      */
     static QcResult validatePalette(BlockPalette palette) {

@@ -5,7 +5,6 @@ import com.qccore.core.UnitLayers;
 import com.qccore.core.nbt.LayersCodec;
 import com.qccore.core.nbt.PaletteCodec;
 import com.qccore.core.palette.BlockPalette;
-import com.qccore.net.QcPackets.QcAlignC2S;
 import com.qccore.net.QcPackets.QcBuildC2S;
 import com.qccore.net.QcPackets.QcIndexS2C;
 import com.qccore.net.QcPackets.QcPlanC2S;
@@ -28,7 +27,6 @@ import java.util.zip.GZIPInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import com.qccore.world.QcAlignService;
 import com.qccore.world.QcBuildService;
 import com.qccore.world.QcUnitIndex;
 import com.qccore.world.QcUnitRecord;
@@ -46,7 +44,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * The server end of the editor: it receives build and align requests and keeps every client's view
+ * The server end of the editor: it receives build, plan, undo and redo requests and keeps every client's view
  * of the placed QC Units up to date.
  */
 public final class QcServerNetworking {
@@ -83,8 +81,6 @@ public final class QcServerNetworking {
     public static void handle(ServerPlayer player, QcPacket packet) {
         if (packet instanceof QcBuildC2S build) {
             receiveBuild(player, build);
-        } else if (packet instanceof QcAlignC2S align) {
-            receiveAlign(player, align);
         } else if (packet instanceof QcPlanC2S chunk) {
             receivePlanChunk(player, chunk);
         } else if (packet instanceof QcUndoC2S) {
@@ -144,23 +140,6 @@ public final class QcServerNetworking {
         } catch (RuntimeException e) {
             LOGGER.warn("qccore: rejected build request from {}: {}", player.getName().getString(), e.toString());
             send(player, new QcResultS2C(false, "the build request was malformed"));
-        }
-    }
-
-    private static void receiveAlign(ServerPlayer player, QcAlignC2S packet) {
-        try {
-            BlockPalette palette = PaletteCodec.fromNbt(packet.palette());
-            QcResult result = QcAlignService.align(player, packet.unit(), packet.a(), packet.b(), packet.c(), palette);
-            if (!result.ok()) {
-                LOGGER.warn("qccore: align request from {} refused: {}", player.getName().getString(), result.message());
-            }
-            send(player, new QcResultS2C(result.ok(), result.message()));
-            if (result.ok()) {
-                push(player);
-            }
-        } catch (RuntimeException e) {
-            LOGGER.warn("qccore: rejected align request from {}: {}", player.getName().getString(), e.toString());
-            send(player, new QcResultS2C(false, "the align request was malformed"));
         }
     }
 
@@ -276,7 +255,7 @@ public final class QcServerNetworking {
         List<QcUnitRecord> nearby = new ArrayList<>();
         for (Map.Entry<BlockPos, QcUnitRecord> entry : units.entrySet()) {
             // Road records go too, so the block preview joins new roads to them; the client draws,
-            // targets and aligns building units only.
+            // targets building units only.
             if (entry.getKey().closerThan(center, PUSH_RADIUS)) {
                 nearby.add(entry.getValue());
             }

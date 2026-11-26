@@ -7,7 +7,7 @@ import java.util.Deque;
 
 /**
  * The requests this client sent to the server that still wait for their result. The server answers
- * every apply, align, undo and redo request with exactly one result packet, in the order it got
+ * every apply, undo and redo request with exactly one result packet, in the order it got
  * them, so the oldest pending request is the one a result answers. The result packet itself does
  * not say what it answers.
  */
@@ -16,7 +16,7 @@ public final class QcRequests {
 	static final int LIMIT = 32;
 
 	/** What a request asked for. */
-	public enum Kind { APPLY, ALIGN, UNDO, REDO }
+	public enum Kind { APPLY, UNDO, REDO }
 
 	/** A request, with the plan history's revision when it was sent. */
 	public record Pending(Kind kind, int revision) {
