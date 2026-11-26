@@ -234,8 +234,11 @@ public final class QcPlanService {
         return origins;
     }
 
-    /** Origins of the qckit units and the full legacy units: only those get their footprint cleared. */
-    private static List<BlockPos> fullOrigins(QcPlan plan, BlockPos anchor) {
+    /**
+     * Origins of the qckit units and the full legacy units: only those get their footprint cleared. Also
+     * used by the client's block preview, which keeps the same standing planes the clear keeps.
+     */
+    public static List<BlockPos> fullOrigins(QcPlan plan, BlockPos anchor) {
         List<BlockPos> origins = new ArrayList<>();
         for (int layer : plan.units().layerKeys()) {
             for (UnitPos pos : plan.units().peekLayer(layer).keySet()) {

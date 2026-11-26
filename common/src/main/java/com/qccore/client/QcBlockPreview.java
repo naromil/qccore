@@ -161,10 +161,10 @@ public final class QcBlockPreview {
 			for (BlockPos pos : QcPlanService.stale(level, joined, rebuilt, QcClientState.palette, anchor, around, compiled)) {
 				out.put(pos, level.getBlockState(pos));
 			}
-			Set<BlockPos> neighbours = new HashSet<>();
-			for (Cell cell : around.standingBuildings(joined)) {
-				neighbours.add(PlanCompiler.origin(anchor, cell));
-			}
+			// the cells whose planes the footprint clear keeps: every standing record (buildings and roads)
+			// the plan doesn't clear itself, as QcPlanService.apply passes them to QcWorldOps.clearFootprint
+			Set<BlockPos> neighbours = new HashSet<>(QcClientState.nearbyUnits.keySet());
+			neighbours.removeAll(QcPlanService.fullOrigins(joined, anchor));
 			for (Cell cell : rebuilt) {
 				BlockPos origin = PlanCompiler.origin(anchor, cell);
 				for (BlockPos p : BlockPos.betweenClosed(origin, origin.offset(8, 8, 8))) {
