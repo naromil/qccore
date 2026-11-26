@@ -414,7 +414,8 @@ public final class QcInteraction {
 			return false;
 		}
 		List<QcPlan> placements = templatePlacements(at);
-		Set<Cell> fronts = standingDoorFronts();
+		// every standing door counts: the stamped buildings are new ones, not the active building
+		Set<Cell> fronts = standingDoorFronts(0);
 		if (!fronts.isEmpty()) {
 			int blocked = 0;
 			for (QcPlan placed : placements) {
@@ -769,8 +770,16 @@ public final class QcInteraction {
 	 */
 	static Set<Cell> standingDoorFronts() {
 		String active = QcClientState.activeBuilding() == null ? null : QcClientState.building;
-		return QcSurroundings.of(QcClientState.nearbyUnits.values(), QcClientState.anchor)
-				.doorFronts(active == null ? 0 : Join.signature(QcClientState.plan, active));
+		return standingDoorFronts(active == null ? 0 : Join.signature(QcClientState.plan, active));
+	}
+
+	/**
+	 * As {@link #standingDoorFronts()}, leaving out only the doors of standing parts of design
+	 * {@code ownSignature} (0: every door counts). The template tool passes 0: a stamp makes fresh
+	 * buildings of the template's own design, which don't join a part of the active building's design.
+	 */
+	static Set<Cell> standingDoorFronts(int ownSignature) {
+		return QcSurroundings.of(QcClientState.nearbyUnits.values(), QcClientState.anchor).doorFronts(ownSignature);
 	}
 
 	/** The world-space origin of a session cell: {@code anchor + 8 * (dx, dy, dz)}. */
