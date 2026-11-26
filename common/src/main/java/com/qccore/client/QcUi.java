@@ -78,6 +78,25 @@ public final class QcUi {
 		g.drawString(font, text, x + 6, y + 3, color, false);
 	}
 
+	/**
+	 * A one-line message pill starting at {@code x} and never wider than {@code maxWidth}: a longer text is cut and
+	 * ends in "…". For footers that share a row with buttons, so the pill can't run under them.
+	 */
+	public static void status(GuiGraphics g, Font font, String text, int color, int x, int y, int maxWidth) {
+		if (text == null || text.isEmpty() || maxWidth <= 20) {
+			return;
+		}
+		String shown = text;
+		if (font.width(shown) + 12 > maxWidth) {
+			shown = font.plainSubstrByWidth(text, maxWidth - 12 - font.width("…")) + "…";
+		}
+		int w = font.width(shown) + 12;
+		g.fill(x + 1, y, x + w - 1, y + 13, 0xE0101318);
+		g.fill(x, y + 1, x + w, y + 12, 0xE0101318);
+		g.fill(x + 1, y + 12, x + w - 1, y + 13, color);
+		g.drawString(font, shown, x + 6, y + 3, color, false);
+	}
+
 	/** {@link com.qccore.core.plan.QcPlan#summary()} shortened for narrow panels: "3 units · 2 cleared · 0 road". */
 	public static String planSummary() {
 		return QcClientState.plan.summary().replaceAll("^1 unit\\(s\\)", "1 unit").replace(" unit(s)", " units")

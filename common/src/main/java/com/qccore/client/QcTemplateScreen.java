@@ -170,7 +170,9 @@ public class QcTemplateScreen extends Screen {
 			}
 		}
 		if (!this.footer.isEmpty()) {
-			QcUi.status(g, this.font, this.footer, this.footerError ? QcUi.ERROR : QcUi.OK, this.width / 2, this.height - 40);
+			// the bottom strip left of Done, clear of the preview panel (T24)
+			QcUi.status(g, this.font, this.footer, this.footerError ? QcUi.ERROR : QcUi.OK, this.left, this.height - 20,
+					this.right + COLUMN - 104 - this.left);
 		}
 		super.render(g, mouseX, mouseY, delta);
 	}

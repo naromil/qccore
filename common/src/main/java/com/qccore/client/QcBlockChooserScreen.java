@@ -516,7 +516,10 @@ public class QcBlockChooserScreen extends Screen {
 			}
 		}
 		if (!this.footer.isEmpty()) {
-			QcUi.status(g, this.font, this.footer, this.footerError ? QcUi.ERROR : QcUi.OK, this.width / 2, this.height - 36);
+			// the bottom strip right of Done: clear of the role rows' "used roles"/3D/page chips (T24)
+			int total = Math.min(this.width - 8, 420);
+			QcUi.status(g, this.font, this.footer, this.footerError ? QcUi.ERROR : QcUi.OK, this.left + 74, this.height - 18,
+					total + (this.side ? this.sideW + 4 : 0) - 74);
 		}
 		super.render(g, mouseX, mouseY, delta);
 	}
