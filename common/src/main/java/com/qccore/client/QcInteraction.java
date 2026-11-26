@@ -8,6 +8,7 @@ import com.qccore.core.UnitSide;
 import com.qccore.core.plan.BuildShape;
 import com.qccore.core.plan.Cell;
 import com.qccore.core.plan.Flags;
+import com.qccore.core.plan.Join;
 import com.qccore.core.plan.Modifiers;
 import com.qccore.core.plan.BuildingSpec;
 import com.qccore.core.plan.QcPlan;
@@ -761,11 +762,15 @@ public final class QcInteraction {
 	}
 
 	/**
-	 * The session cells right in front of a door the server reported ({@code /qc scan}); the units and
-	 * template tools never plan a unit there, so a new plan cannot wall up a standing building.
+	 * The session cells right in front of a door the server reported ({@code /qc scan} or an earlier
+	 * apply); the units and template tools never plan a unit there, so a new plan cannot wall up a
+	 * standing building. A door of a standing part of the active building's own design doesn't count:
+	 * the new unit joins that part and the rebuilt building places its doors anew.
 	 */
 	static Set<Cell> standingDoorFronts() {
-		return QcSurroundings.of(QcClientState.nearbyUnits.values(), QcClientState.anchor).doorFronts();
+		String active = QcClientState.activeBuilding() == null ? null : QcClientState.building;
+		return QcSurroundings.of(QcClientState.nearbyUnits.values(), QcClientState.anchor)
+				.doorFronts(active == null ? 0 : Join.signature(QcClientState.plan, active));
 	}
 
 	/** The world-space origin of a session cell: {@code anchor + 8 * (dx, dy, dz)}. */

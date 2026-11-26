@@ -102,10 +102,37 @@ public record Surroundings(Set<Cell> roads, Map<Cell, Integer> doors, Set<Cell> 
         return out;
     }
 
+    /**
+     * These surroundings without the doors of cells the plan has a unit on: such a cell is rebuilt by the
+     * plan (a joined part of the same building), and the rebuilt building places its own doors.
+     */
+    public Surroundings withoutDoorsIn(QcPlan plan) {
+        Map<Cell, Integer> kept = new LinkedHashMap<>();
+        for (Map.Entry<Cell, Integer> entry : doors.entrySet()) {
+            if (!plan.hasUnit(entry.getKey())) {
+                kept.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return kept.size() == doors.size() ? this : new Surroundings(roads, kept, buildings, parts, roadStyles);
+    }
+
     /** The cells right in front of a standing door, on the door's layer: a unit there would wall it up. */
     public Set<Cell> doorFronts() {
+        return doorFronts(0);
+    }
+
+    /**
+     * As {@link #doorFronts()}, leaving out the doors of standing parts whose design signature is
+     * {@code ownSignature} (non-zero): a new unit of that same design joins the part, and the rebuilt
+     * building places its doors anew, so it may grow in front of its old door.
+     */
+    public Set<Cell> doorFronts(int ownSignature) {
         Set<Cell> out = new LinkedHashSet<>();
         for (Map.Entry<Cell, Integer> entry : doors.entrySet()) {
+            Part part = parts.get(entry.getKey());
+            if (ownSignature != 0 && part != null && part.signature() == ownSignature) {
+                continue;
+            }
             for (int s = 0; s < 4; s++) {
                 if ((entry.getValue() & (1 << s)) != 0) {
                     out.add(entry.getKey().offset(SIDES[s][0], 0, SIDES[s][1]));

@@ -358,6 +358,19 @@ public class QcPlanGameTests implements FabricGameTest {
         if (!door) {
             throw new AssertionError("no door on the road face");
         }
+        // the apply records the door's side (south, bit 2), so later plans keep the cell in front free (T22)
+        java.util.Map<BlockPos, QcUnitRecord> records = QcUnitIndex.get(world).units(world.dimension().location());
+        int recordedDoors = 0;
+        for (int x = 0; x <= 1; x++) {
+            QcUnitRecord record = records.get(origin.offset(x * 8, 0, 0));
+            if (record == null) {
+                throw new AssertionError("no record for the ground unit " + x);
+            }
+            recordedDoors |= record.doors();
+        }
+        if (recordedDoors != 0b0100) {
+            throw new AssertionError("expected the ground floor to record a south door, got doors " + recordedDoors);
+        }
         expect(world, anchor.offset(4, 8, 12), Blocks.STONE_BRICKS, "road in front of the house");
         boolean decor = false;
         for (BlockPos pos : BlockPos.betweenClosed(anchor.offset(-1, 9, 9), anchor.offset(17, 12, 16))) {

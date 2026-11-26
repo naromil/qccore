@@ -41,11 +41,12 @@ public final class PlanCompiler {
     /**
      * The compiled plan. {@code blocks} keeps insertion order. {@code problems} stop an apply;
      * {@code notes} are worth showing; {@code reached}/{@code missing} are the roles each style's
-     * buildings and roads used, and the required ones with no block.
+     * buildings and roads used, and the required ones with no block; {@code doors} the door sides of every
+     * generated unit ({@link District.Result#doors()}).
      */
     public record Compiled(Map<BlockPos, BlockState> blocks, Set<BlockPos> air, Map<BlockPos, BlockState> ground,
                            List<BlockPos> unitOrigins, List<String> problems, List<String> notes,
-                           Map<String, Set<String>> reached, Map<String, Set<String>> missing) {
+                           Map<String, Set<String>> reached, Map<String, Set<String>> missing, Map<Cell, Integer> doors) {
 
         /** A structure-style block map: blocks, then ground, then (optionally) air. */
         public Map<BlockPos, BlockState> forExport(boolean includeAir) {
@@ -152,7 +153,7 @@ public final class PlanCompiler {
         ground.keySet().removeAll(blocks.keySet());
         ground.keySet().removeAll(air);
         return new Compiled(blocks, air, ground, origins, problems, district.notes(), district.reached(),
-                district.missing());
+                district.missing(), district.doors());
     }
 
     /** World origin of a cell: {@code anchor + 8 * (x, layer, z)}. */

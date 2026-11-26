@@ -35,10 +35,12 @@ public final class District {
     /**
      * The generated blocks, plan-local, in write order; the problems that stop an apply (unchosen
      * roles, unknown design values); notes worth showing (doors onto nothing, unreachable units,
-     * collisions); and per style, the roles its buildings and roads reached.
+     * collisions); per style, the roles its buildings and roads reached; and the door sides of every
+     * generated unit (plan cell -> side bits, bit0 = NORTH, bit1 = EAST, bit2 = SOUTH, bit3 = WEST, as in
+     * {@link Surroundings#doors()}), so an apply can record them.
      */
     public record Result(Map<BlockPos, String> blocks, List<String> problems, List<String> notes,
-                         Map<String, Set<String>> reached, Map<String, Set<String>> missing) {
+                         Map<String, Set<String>> reached, Map<String, Set<String>> missing, Map<Cell, Integer> doors) {
     }
 
     private District() {
@@ -57,9 +59,12 @@ public final class District {
 
     /**
      * As {@link #build(QcPlan)}, with the roads joining the standing road cells of {@code around} and
-     * keeping the approach of its standing doors free of road furniture.
+     * keeping the approach of its standing doors free of road furniture. A standing door in a cell the
+     * plan itself rebuilds (a {@link com.qccore.core.plan.Join joined} part) is not standing any more: the
+     * rebuilt building places its own doors.
      */
-    public static Result build(QcPlan plan, Surroundings around) {
+    public static Result build(QcPlan plan, Surroundings recorded) {
+        Surroundings around = recorded.withoutDoorsIn(plan);
         List<String> problems = new ArrayList<>();
         List<String> notes = new ArrayList<>();
         Map<String, Set<String>> reached = new LinkedHashMap<>();
@@ -351,7 +356,13 @@ public final class District {
             problems.add("style '" + entry.getKey() + "' has no block for " + String.join(", ", ordered)
                     + " (choose them in the block chooser)");
         }
-        return new Result(out, problems, notes, reached, missing);
+        Map<Cell, Integer> doors = new LinkedHashMap<>();
+        for (Building b : made.values()) {
+            for (Building.Door d : b.doors) {
+                doors.merge(new Cell(d.u().x(), d.u().s(), d.u().z()), 1 << d.side().ordinal(), (x, y) -> x | y);
+            }
+        }
+        return new Result(out, problems, notes, reached, missing, doors);
     }
 
     /**

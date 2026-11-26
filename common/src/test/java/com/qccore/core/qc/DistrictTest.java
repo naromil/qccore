@@ -353,6 +353,41 @@ class DistrictTest {
         }
     }
 
+    /** An apply records the door sides the generator gave each cell (T22, review #40). */
+    @Test
+    void aHouseReportsTheSidesOfItsDoors() {
+        District.Result result = District.build(house("house", 2, 1, 2));
+        assertFalse(result.doors().isEmpty(), "the house has a door");
+        for (Map.Entry<Cell, Integer> e : result.doors().entrySet()) {
+            assertEquals(1, e.getKey().layer(), "doors stand on the ground storey: " + e.getKey());
+            assertEquals(0, e.getKey().z(), "the house is one unit deep: " + e.getKey());
+            assertEquals(0b0100, (int) e.getValue(), "the door opens south onto the road: " + e.getKey());
+        }
+    }
+
+    /** A cell the plan rebuilds (a joined part) is not held back by the door it was recorded with. */
+    @Test
+    void aRebuiltCellIgnoresItsOwnRecordedDoor() {
+        QcPlan plan = withoutDecor(street());
+        Map<BlockPos, String> alone = District.build(plan).blocks();
+        Map<Cell, Integer> doors = District.build(plan).doors();
+        Set<Cell> cells = new java.util.HashSet<>(plan.cells());
+        Surroundings around = new Surroundings(Set.of(), doors, cells);
+        assertEquals(alone, District.build(plan, around).blocks(),
+                "the plan's own recorded doors must not change how it rebuilds itself");
+    }
+
+    /** New units of a standing part's own design may grow in front of its door; others may not. */
+    @Test
+    void doorFrontsLeaveOutTheDoorsOfTheActiveDesign() {
+        Cell door = new Cell(0, 1, 0);
+        Surroundings around = new Surroundings(Set.of(), Map.of(door, 0b0100), Set.of(door),
+                Map.of(door, new Surroundings.Part(42, 0, 0)));
+        assertEquals(Set.of(new Cell(0, 1, 1)), around.doorFronts());
+        assertEquals(Set.of(new Cell(0, 1, 1)), around.doorFronts(7));
+        assertTrue(around.doorFronts(42).isEmpty());
+    }
+
     @Test
     void decorKeepsTheApproachOfAStandingDoorFree() {
         // a standing building south of the street at (0, 1, 3), its door on the north side (bit 0)

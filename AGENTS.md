@@ -192,7 +192,7 @@ Server/client split:
   `Map<ResourceLocation dimension, LinkedHashMap<BlockPos origin, QcUnitRecord>>`. `QcServerNetworking` pushes every unit
   within 128 blocks of a player (nearest first, capped 4096) on join, after a successful build or apply, and every 40
   ticks once the player moved 16 blocks. A `QcUnitRecord` also has a `kind` (`BUILDING`, or `ROAD` for road
-  cells a plan's apply laid or `/qc scan` found; apply keeps a building record standing at a road cell) and `doors` (side bits), stored as `k`/`d` only when non-zero so older records read
+  cells a plan's apply laid or `/qc scan` found; apply keeps a building record standing at a road cell) and `doors` (side bits: `/qc scan` finds them, and an apply records the sides `District.Result.doors` gave each generated cell, T22), stored as `k`/`d` only when non-zero so older records read
   back as door-less buildings. Road records are pushed (the block preview needs them) but never pruned,
   or drawn as units: client code that wants building units checks `isBuilding()`.
 - Plans read the index through `core/plan/Surroundings` (registry-free: standing road cells, standing building
@@ -201,7 +201,8 @@ Server/client split:
   export none. `RoadKit.build/networkArea(cells, joined, ...)` open the arms towards joined cells, measure lanes
   across both and pave the mouths and plaza posts, never inside a joined cell; `District.build(plan, around)`
   also keeps scanned doors' 3x3 approaches free of road furniture. The units/template tools refuse cells in
-  `doorFronts()`, and an index push with an empty plan re-snaps the anchor (`adoptNearbyLattice`, roads included).
+  `doorFronts(signature)` (a door of a standing part of the active building's own design doesn't count: the new unit
+  joins it), `District.build` ignores the recorded doors of cells the plan itself rebuilds (`withoutDoorsIn`), and an index push with an empty plan re-snaps the anchor (`adoptNearbyLattice`, roads included).
   New roads change the standing roads they meet (user rule, 2026-11-21: "newly built parts are allowed to change
   previously built parts"): `PlanCompiler.compile` first runs `core/plan/RoadJoin.join`, which adds every standing road
   cell next to a planned road cell to the plan, so it is rebuilt with its new arm (lanes, furniture, medallion, headroom

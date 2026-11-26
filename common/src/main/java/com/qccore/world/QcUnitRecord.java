@@ -18,8 +18,9 @@ import net.minecraft.nbt.Tag;
  *
  * <p>Bit layout (identical to the layer wire format): <b>bit0 = NORTH, bit1 = EAST, bit2 = SOUTH,
  * bit3 = WEST</b>. {@code kind} is {@link #BUILDING} for every unit the mod applied and {@link #ROAD}
- * for road cells, recorded by a plan's apply or found by {@code /qc scan}; {@code doors} (same bits) is filled in by the scan, so a
- * later plan knows where an existing building opens onto the street. Both are left out of the NBT when
+ * for road cells, recorded by a plan's apply or found by {@code /qc scan}; {@code doors} (same bits) is filled in by the scan and,
+ * for the qckit buildings it generates, by an apply, so a later plan knows where an existing building opens onto
+ * the street (and keeps the cell in front free). Both are left out of the NBT when
  * zero, so records written before them read back unchanged. {@code part} is the
  * {@link com.qccore.core.plan.Join#signature design signature} of the qckit building an apply built
  * the cell as (0 for scanned, legacy and road cells), so a later part of the same building joins it.
@@ -65,7 +66,12 @@ public record QcUnitRecord(BlockPos origin, int walls, int gates, int kind, int 
 
     /** An applied building cell, built as part of the building whose design signature is {@code part}. */
     public static QcUnitRecord of(BlockPos origin, QcUnit unit, int part) {
-        return new QcUnitRecord(origin, LayersCodec.bits(unit, false), LayersCodec.bits(unit, true), BUILDING, 0, part);
+        return of(origin, unit, part, 0);
+    }
+
+    /** As {@link #of(BlockPos, QcUnit, int)}, with the door sides the generator gave the cell. */
+    public static QcUnitRecord of(BlockPos origin, QcUnit unit, int part, int doors) {
+        return new QcUnitRecord(origin, LayersCodec.bits(unit, false), LayersCodec.bits(unit, true), BUILDING, doors & 0xF, part);
     }
 
     public CompoundTag toNbt() {

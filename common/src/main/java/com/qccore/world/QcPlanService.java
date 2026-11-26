@@ -94,9 +94,10 @@ public final class QcPlanService {
             for (Map.Entry<UnitPos, QcUnit> entry : plan.units().peekLayer(layer).entrySet()) {
                 BlockPos origin = PlanCompiler.origin(anchor, Cell.of(entry.getKey(), layer));
                 previous.put(origin, index.units(dimension).get(origin));
-                int part = District.generates(plan, Cell.of(entry.getKey(), layer))
-                        ? Join.signature(plan, plan.building(Cell.of(entry.getKey(), layer))) : 0;
-                index.put(dimension, origin, QcUnitRecord.of(origin, entry.getValue(), part));
+                Cell cell = Cell.of(entry.getKey(), layer);
+                int part = District.generates(plan, cell) ? Join.signature(plan, plan.building(cell)) : 0;
+                // the doors too, so later plans keep the cell in front free and road decor out of the approach
+                index.put(dimension, origin, QcUnitRecord.of(origin, entry.getValue(), part, compiled.doors().getOrDefault(cell, 0)));
             }
         }
         // Road cells are recorded too, with their road style, so a later plan joins them without a
