@@ -141,7 +141,7 @@ public final class QcHud {
 		String[][] controls = {
 				{use, "use tool / next point"},
 				{attack, "erase / cancel shape"},
-				{"Shift+" + use, "wall on a shared face"},
+				{"Shift+" + use, "exact cell (placing) · else wall"},
 				{"Ctrl+" + use, "gate on a shared face"},
 				{"Shift/Ctrl+" + attack, "clear wall / gate"},
 				{key(QcKeys.tools), "planning tools"},

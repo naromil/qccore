@@ -76,7 +76,12 @@ the original QCSimple-port spec, is no longer in the repo.)
   (`QcBuildService`, `UnitLayers` keyed `dy + 1` on import) still refuses layers below 1. A placing tool (units, template) aimed at a block's
   **top face** works on the layer whose floor plane is nearest that block (`Alignment.nearestLayer`: local y 0..4 →
   that layer, 5..7 → the one above; user's rule, review #14); side faces and misses use the aimed block's layer, and
-  the lattice itself never moves for terrain.
+  the lattice itself never moves for terrain. Unless Shift is held, `QcInteraction.target` then lets
+  `core/plan/SmartCursor` adjust a placing tool's cell (T29, review #52 rules 1 3 4): near either end (2.5
+  blocks) of a unit's side face the cell round the corner wins when it touches more other units or fronts a road
+  (ties keep the straight cell; never onto a unit, road or door front); on the ground the layer of the nearest
+  unit within 2 cells and ±1 layer; standing door fronts and other buildings' planned door fronts are avoided.
+  Shift + RMB with a placing tool is that exact-cell override, not the single-wall click.
 - **Legacy nine components** (QCSimple, `qcsimple` template only) in `core/palette/`, fixed order `frameworkBlock, rowBlock, columnBlock, wallBlock,
   floorBlock` (block ids, seeded by `Defaults.applyTo` with `polished_deepslate`, `chiseled_deepslate`, `spruce_log`,
   `deepslate_tiles`, `spruce_planks`) then `innerWall, gate, outerWall` (all `deepslate_bricks`) and `innerColumn`

@@ -99,6 +99,12 @@ public final class QcBlockPreview {
 		return roles == null ? Map.of() : roles.missing();
 	}
 
+	/** The door sides (bit = side ordinal, N E S W) of the plan's buildings, as the generator places them. */
+	public static Map<Cell, Integer> doors() {
+		ensureRoles();
+		return roles == null ? Map.of() : roles.doors();
+	}
+
 	/** Per style, every role the plan's buildings and roads reach. */
 	public static Map<String, java.util.Set<String>> reached() {
 		ensureRoles();

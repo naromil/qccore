@@ -12,6 +12,8 @@ import com.qccore.core.plan.Join;
 import com.qccore.core.plan.Modifiers;
 import com.qccore.core.plan.BuildingSpec;
 import com.qccore.core.plan.QcPlan;
+import com.qccore.core.plan.SmartCursor;
+import com.qccore.core.plan.Surroundings;
 import com.qccore.core.qc.BlockChoice;
 import com.qccore.core.qc.Roles;
 import com.qccore.core.qc.Templates;
@@ -194,13 +196,107 @@ public final class QcInteraction {
 			return new Cell(points.get(1).x(), heightLayer(client, points.get(1)), points.get(1).z());
 		}
 		UnitPos cell = cursor.cell();
+		int layer = cursor.layer();
 		if (isPlacingTool(QcClientState.tool) && cursor.blockHit() && client.hitResult instanceof BlockHitResult hit) {
 			BlockPos reference = hit.getBlockPos().relative(cursor.face());
 			BlockPos anchor = QcClientState.anchor;
 			cell = new UnitPos(Math.floorDiv(reference.getX() - anchor.getX(), 8),
 					Math.floorDiv(reference.getZ() - anchor.getZ(), 8));
+			// T29: unless Shift is held (exactly the aimed cell), let the units and roads round the aim decide
+			if (!modifierDown(client, GLFW.GLFW_KEY_LEFT_SHIFT, GLFW.GLFW_KEY_RIGHT_SHIFT)) {
+				Cell smart = smartTarget(cursor, hit, Cell.of(cell, layer));
+				cell = smart.pos();
+				layer = smart.layer();
+			}
 		}
-		return Cell.of(cell, cursor.layer());
+		return Cell.of(cell, layer);
+	}
+
+	/**
+	 * A placing tool's target adjusted by {@link SmartCursor}: beside a planned or standing unit, the cell
+	 * round the corner when it fits the neighbours better; on the ground, the layer of the units nearby;
+	 * never a door's front cell over one that isn't.
+	 */
+	private static Cell smartTarget(Cursor cursor, BlockHitResult hit, Cell plain) {
+		SmartCursor.Around around = around();
+		BlockPos anchor = QcClientState.anchor;
+		UnitSide side = UnitSide.of(cursor.face());
+		if (side != null) {
+			Cell aimed = Cell.of(cursor.cell(), cursor.layer());
+			if (!around.unit(aimed)) {
+				return plain;
+			}
+			Vec3 at = hit.getLocation();
+			double along = side == UnitSide.NORTH || side == UnitSide.SOUTH
+					? at.x - (anchor.getX() + cursor.cell().x() * 8)
+					: at.z - (anchor.getZ() + cursor.cell().z() * 8);
+			return SmartCursor.beside(aimed, side, Mth.clamp(along, 0.0, 8.0), around);
+		}
+		if (cursor.face() == Direction.UP) {
+			int blockLayer = Math.floorDiv(hit.getBlockPos().getY() - anchor.getY(), 8);
+			if (!around.unit(Cell.of(cursor.cell(), blockLayer))) {
+				return new Cell(plain.x(), SmartCursor.groundLayer(plain, around), plain.z());
+			}
+		}
+		return plain;
+	}
+
+	private static SmartCursor.Around aroundCache;
+	private static long aroundTick = Long.MIN_VALUE;
+	private static int aroundVersion = -1;
+	private static BlockPos aroundAnchor;
+	private static QcTool aroundTool;
+
+	/**
+	 * The planned and standing units, roads and door fronts the smart cursor looks at. Rebuilt when the
+	 * plan, anchor or tool changes and at most every 10 ticks otherwise (the index arrives from the server).
+	 */
+	static SmartCursor.Around around() {
+		Minecraft client = Minecraft.getInstance();
+		long tick = client.level == null ? 0 : client.level.getGameTime();
+		if (aroundCache != null && aroundVersion == QcClientState.planVersion && Objects.equals(aroundAnchor, QcClientState.anchor)
+				&& aroundTool == QcClientState.tool && tick >= aroundTick && tick - aroundTick < 10) {
+			return aroundCache;
+		}
+		aroundTick = tick;
+		aroundVersion = QcClientState.planVersion;
+		aroundAnchor = QcClientState.anchor;
+		aroundTool = QcClientState.tool;
+		QcPlan plan = QcClientState.plan;
+		Surroundings standing = QcSurroundings.of(QcClientState.nearbyUnits.values(), QcClientState.anchor);
+		// the template tool makes fresh buildings: every standing door counts (as stampTemplate checks)
+		boolean template = QcClientState.tool == QcTool.TEMPLATE;
+		String active = template || QcClientState.activeBuilding() == null ? null : QcClientState.building;
+		Set<Cell> fronts = new java.util.HashSet<>(standing.doorFronts(active == null ? 0 : Join.signature(plan, active)));
+		// planned doors of the other buildings (a unit added to the active one just moves its door)
+		for (Map.Entry<Cell, Integer> door : QcBlockPreview.doors().entrySet()) {
+			if (active != null && active.equals(plan.building(door.getKey()))) {
+				continue;
+			}
+			for (UnitSide side : UnitSide.values()) {
+				if ((door.getValue() & 1 << side.ordinal()) != 0) {
+					UnitPos front = neighbour(door.getKey().pos(), side);
+					fronts.add(Cell.of(front, door.getKey().layer()));
+				}
+			}
+		}
+		aroundCache = new SmartCursor.Around() {
+			@Override
+			public boolean unit(Cell cell) {
+				return plan.hasUnit(cell) || standing.buildings().contains(cell);
+			}
+
+			@Override
+			public boolean road(Cell cell) {
+				return plan.roads().containsKey(cell) || standing.roads().contains(cell);
+			}
+
+			@Override
+			public boolean doorFront(Cell cell) {
+				return fronts.contains(cell);
+			}
+		};
+		return aroundCache;
 	}
 
 	/** The shape the current tool uses: a template is always stamped with one click. */
@@ -236,7 +332,8 @@ public final class QcInteraction {
 		}
 		boolean control = modifierDown(client, GLFW.GLFW_KEY_LEFT_CONTROL, GLFW.GLFW_KEY_RIGHT_CONTROL);
 		boolean shift = modifierDown(client, GLFW.GLFW_KEY_LEFT_SHIFT, GLFW.GLFW_KEY_RIGHT_SHIFT);
-		if (control || shift) {
+		// Shift + RMB with a building or template tool places on exactly the aimed cell (T29) instead of setting a wall
+		if (control || shift && !(useKey && isPlacingTool(QcClientState.tool))) {
 			edit(() -> toggleWall(cursor, useKey, control));
 			return;
 		}
