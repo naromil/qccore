@@ -237,6 +237,11 @@ Server/client split:
   The block preview shows that rebuild (T28): a ghost replacing a standing block is drawn a hair larger so it
   shows over it, and what the apply takes down from rebuilt parts (`QcBlockPreview.takenDown`: the cell clear, the
   `QcPlanService.stale` left-overs, old furniture in a rebuilt road's headroom) is drawn red, counted on the HUD.
+  The ghost and red blocks are baked into one translucent `VertexBuffer` (`RenderType.translucent()`, BLOCK format,
+  positions relative to the camera block at bake time) and redrawn as is each frame; it is rebuilt when the plan or
+  anchor changes, the camera moves 16 blocks, or every 100 ticks (blocks set by hand). Faces are sorted once per
+  bake, so translucency may glitch a little between bakes (T27, user's pick #51 b). Non-model ghosts (chests,
+  signs) are drawn each frame. `QcBlockPreviewMeshTest` pins the vertex path (ghost tint into BLOCK format).
 - `/qc scan [radius]` = `QcScanService` (server, read-only towards the world) over the registry-free
   `core/scan/QcScanner`: it reads the box (radius 8..64, 16 below to 40 above) once, picks the one of the 512
   grid offsets that explains the most building units (all 12 framework edges built, terrain blocks counting as

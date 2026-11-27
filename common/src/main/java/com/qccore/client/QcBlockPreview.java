@@ -1,7 +1,13 @@
 package com.qccore.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexBuffer;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.VertexSorting;
 import com.qccore.core.QcResult;
 import com.qccore.core.plan.Cell;
 import com.qccore.core.plan.Join;
@@ -11,14 +17,16 @@ import com.qccore.core.plan.RoadJoin;
 import com.qccore.core.plan.Surroundings;
 import com.qccore.world.QcPlanService;
 import com.qccore.world.QcSurroundings;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.Sheets;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
@@ -30,8 +38,9 @@ import net.minecraft.world.phys.Vec3;
 /**
  * Ghost blocks of the plan: the compiled blocks (units with their masks, roads, ground fill) drawn
  * translucent in place, the way Effortless Building previews a placement. Only positions whose world block
- * differs are drawn, within {@link #RANGE} blocks of the camera and at most {@link #LIMIT} per
- * frame. The compilation is cached until the plan, the palette or the anchor changes.
+ * differs are drawn, within {@link #RANGE} blocks of the camera and at most {@link #LIMIT}. The
+ * compilation is cached until the plan, the palette or the anchor changes, and the drawn blocks are
+ * baked into a vertex buffer that is reused frame to frame (see {@link #render}).
  *
  * <p>When the plan rebuilds standing parts (a new part of the same building, {@link Join}; a road it
  * meets, {@link RoadJoin}), the ghost shows how they change, as the apply will (T28): a ghost that
@@ -57,6 +66,21 @@ public final class QcBlockPreview {
 	/** Standing blocks the apply takes down from the parts it rebuilds, with their state when compiled. */
 	private static Map<BlockPos, BlockState> removed = Map.of();
 	private static String problem;
+
+	/** Camera travel, in blocks, before the baked ghost mesh is rebuilt round the new position. */
+	private static final double REBUILD_MOVE = 16.0;
+	/** Ticks before the mesh is rebuilt anyway, so blocks set by hand (ghosts now equal to them) drop out. */
+	private static final int REBUILD_TICKS = 100;
+	private static VertexBuffer mesh;
+	private static BufferBuilder builder;
+	private static boolean meshFilled;
+	private static BlockPos meshOrigin = BlockPos.ZERO;
+	private static BlockPos meshAnchor;
+	private static Vec3 meshCamera;
+	private static int meshVersion = -1;
+	private static long meshTick;
+	/** Ghosts that aren't plain block models, drawn each frame. */
+	private static List<Map.Entry<BlockPos, BlockState>> special = List.of();
 
 	private QcBlockPreview() {
 	}
@@ -191,42 +215,98 @@ public final class QcBlockPreview {
 		return out;
 	}
 
-	/** Draws the ghost blocks; {@code matrices} is already translated by minus the camera position. */
+	/**
+	 * Draws the ghost blocks; {@code matrices} is already translated by minus the camera position. The
+	 * ghost and red blocks are baked into one translucent vertex buffer ({@link #mesh}) and only rebuilt
+	 * when the plan or anchor changes, the camera moves {@link #REBUILD_MOVE} blocks from where it was
+	 * built, or {@link #REBUILD_TICKS} have passed (so blocks placed by hand show up); every other frame
+	 * just draws that buffer (T27, user: "it was the bigger the more laggy"). Its faces are sorted for
+	 * the camera position it was built at, so translucency can glitch a little until the next rebuild.
+	 * Blocks that aren't plain models (chests, signs, ...) are few and still drawn each frame.
+	 */
 	static void render(Minecraft client, PoseStack matrices, Vec3 camera) {
 		refresh();
 		if (!QcClientState.blockPreview || blocks.isEmpty() && removed.isEmpty() || client.level == null) {
 			return;
 		}
+		long now = client.level.getGameTime();
+		if (meshVersion != version || !java.util.Objects.equals(meshAnchor, anchor) || meshCamera == null
+				|| camera.distanceToSqr(meshCamera) > REBUILD_MOVE * REBUILD_MOVE
+				|| now - meshTick >= REBUILD_TICKS || now < meshTick) {
+			build(client, camera, now);
+		}
+		if (meshFilled) {
+			RenderType type = RenderType.translucent();
+			type.setupRenderState();
+			matrices.pushPose();
+			matrices.translate(meshOrigin.getX(), meshOrigin.getY(), meshOrigin.getZ());
+			mesh.bind();
+			mesh.drawWithShader(matrices.last().pose(), RenderSystem.getProjectionMatrix(), RenderSystem.getShader());
+			VertexBuffer.unbind();
+			matrices.popPose();
+			type.clearRenderState();
+		}
+		if (!special.isEmpty()) {
+			BlockRenderDispatcher renderer = client.getBlockRenderer();
+			MultiBufferSource.BufferSource consumers = client.renderBuffers().bufferSource();
+			for (Map.Entry<BlockPos, BlockState> entry : special) {
+				BlockPos pos = entry.getKey();
+				matrices.pushPose();
+				matrices.translate(pos.getX(), pos.getY(), pos.getZ());
+				renderer.renderSingleBlock(entry.getValue(), matrices, consumers,
+						LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY);
+				matrices.popPose();
+			}
+			consumers.endBatch();
+		}
+	}
+
+	/**
+	 * Bakes the ghost and red blocks within reach of {@code camera} ({@link #RANGE} plus the
+	 * {@link #REBUILD_MOVE} the camera may wander before the next rebuild) into {@link #mesh}, block
+	 * positions relative to {@link #meshOrigin} so the floats stay exact far from the world origin.
+	 */
+	private static void build(Minecraft client, Vec3 camera, long now) {
+		meshVersion = version;
+		meshAnchor = anchor;
+		meshCamera = camera;
+		meshTick = now;
+		meshOrigin = BlockPos.containing(camera);
+		List<Map.Entry<BlockPos, BlockState>> specials = new ArrayList<>();
+		double reach = (RANGE + REBUILD_MOVE) * (RANGE + REBUILD_MOVE);
 		BlockRenderDispatcher renderer = client.getBlockRenderer();
-		MultiBufferSource.BufferSource consumers = client.renderBuffers().bufferSource();
+		if (builder == null) {
+			builder = new BufferBuilder(1 << 16);
+		}
+		builder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
+		PoseStack local = new PoseStack();
 		int drawn = 0;
 		for (Map.Entry<BlockPos, BlockState> entry : blocks.entrySet()) {
 			BlockPos pos = entry.getKey();
-			if (camera.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) > RANGE * RANGE) {
+			if (camera.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) > reach) {
 				continue;
 			}
 			BlockState standing = client.level.getBlockState(pos);
-			if (standing.equals(entry.getValue())) {
+			BlockState state = entry.getValue();
+			if (standing.equals(state)) {
 				continue;
 			}
-			matrices.pushPose();
-			matrices.translate(pos.getX(), pos.getY(), pos.getZ());
-			if (!standing.isAir()) {
-				// replaces a standing block: a hair larger, or the ghost hides inside it
-				grow(matrices, OVER);
-			}
-			BlockState state = entry.getValue();
-			if (state.getRenderShape() == RenderShape.MODEL) {
-				VertexConsumer ghost = new AlphaConsumer(consumers.getBuffer(Sheets.translucentCullBlockSheet()), ALPHA, 1F, 1F, 1F);
+			if (state.getRenderShape() != RenderShape.MODEL) {
+				specials.add(entry);
+			} else {
+				local.pushPose();
+				local.translate(pos.getX() - meshOrigin.getX(), pos.getY() - meshOrigin.getY(), pos.getZ() - meshOrigin.getZ());
+				if (!standing.isAir()) {
+					// replaces a standing block: a hair larger, or the ghost hides inside it
+					grow(local, OVER);
+				}
 				int color = client.getBlockColors().getColor(state, null, null, 0);
-				renderer.getModelRenderer().renderModel(matrices.last(), ghost, state, renderer.getBlockModel(state),
+				renderer.getModelRenderer().renderModel(local.last(), new AlphaConsumer(builder, ALPHA, 1F, 1F, 1F), state,
+						renderer.getBlockModel(state),
 						(color >> 16 & 255) / 255.0F, (color >> 8 & 255) / 255.0F, (color & 255) / 255.0F,
 						LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY);
-			} else {
-				renderer.renderSingleBlock(state, matrices, consumers,
-						LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY);
+				local.popPose();
 			}
-			matrices.popPose();
 			if (++drawn >= LIMIT) {
 				break;
 			}
@@ -237,26 +317,37 @@ public final class QcBlockPreview {
 				break;
 			}
 			BlockPos pos = entry.getKey();
-			if (camera.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) > RANGE * RANGE) {
+			if (camera.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) > reach) {
 				continue;
 			}
 			BlockState state = client.level.getBlockState(pos);
 			if (state.isAir() || state.getRenderShape() != RenderShape.MODEL) {
 				continue;
 			}
-			matrices.pushPose();
-			matrices.translate(pos.getX(), pos.getY(), pos.getZ());
-			grow(matrices, OVER * OVER);
-			VertexConsumer red = new AlphaConsumer(consumers.getBuffer(Sheets.translucentCullBlockSheet()), REMOVED_ALPHA,
-					1F, 0.25F, 0.25F);
+			local.pushPose();
+			local.translate(pos.getX() - meshOrigin.getX(), pos.getY() - meshOrigin.getY(), pos.getZ() - meshOrigin.getZ());
+			grow(local, OVER * OVER);
 			int color = client.getBlockColors().getColor(state, client.level, pos, 0);
-			renderer.getModelRenderer().renderModel(matrices.last(), red, state, renderer.getBlockModel(state),
+			renderer.getModelRenderer().renderModel(local.last(), new AlphaConsumer(builder, REMOVED_ALPHA, 1F, 0.25F, 0.25F),
+					state, renderer.getBlockModel(state),
 					(color >> 16 & 255) / 255.0F, (color >> 8 & 255) / 255.0F, (color & 255) / 255.0F,
 					LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY);
-			matrices.popPose();
+			local.popPose();
 			drawn++;
 		}
-		consumers.endBatch();
+		special = specials;
+		builder.setQuadSorting(VertexSorting.byDistance((float) (camera.x - meshOrigin.getX()),
+				(float) (camera.y - meshOrigin.getY()), (float) (camera.z - meshOrigin.getZ())));
+		BufferBuilder.RenderedBuffer baked = builder.endOrDiscardIfEmpty();
+		meshFilled = baked != null;
+		if (baked != null) {
+			if (mesh == null) {
+				mesh = new VertexBuffer(VertexBuffer.Usage.STATIC);
+			}
+			mesh.bind();
+			mesh.upload(baked);
+			VertexBuffer.unbind();
+		}
 	}
 
 	/** Scales the unit block at the pose's origin by {@code scale} round its centre. */
@@ -270,7 +361,7 @@ public final class QcBlockPreview {
 	 * Passes every vertex through, with a fixed alpha and the colour multiplied by a tint: the ghost look
 	 * (white tint) and the red of a block the apply takes down, on the translucent block-atlas layer.
 	 */
-	private static final class AlphaConsumer implements VertexConsumer {
+	static final class AlphaConsumer implements VertexConsumer {
 		private final VertexConsumer delegate;
 		private final int alpha;
 		private final float red;
