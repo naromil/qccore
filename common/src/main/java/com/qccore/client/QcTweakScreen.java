@@ -155,12 +155,22 @@ public class QcTweakScreen extends Screen {
 		return plan.hasUnit(other) && key != null && key.equals(plan.building(other));
 	}
 
-	/** This unit is on its building's ground storey (no unit of the building right below it). */
+	/**
+	 * This unit is on its building's ground storey: the building's lowest layer, as {@code Building} counts
+	 * it. A unit with nothing of its building below it but standing higher (a span) gets no door there.
+	 */
 	private boolean ground() {
 		QcPlan plan = QcClientState.plan;
-		Cell below = new Cell(this.cell.x(), this.cell.layer() - 1, this.cell.z());
 		String key = plan.building(this.cell);
-		return !(plan.hasUnit(below) && key != null && key.equals(plan.building(below)));
+		if (key == null) {
+			return true;
+		}
+		for (Cell other : plan.cells()) {
+			if (other.layer() < this.cell.layer() && key.equals(plan.building(other))) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private QcPlan.Partition partitionOf(UnitSide side) {
