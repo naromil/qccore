@@ -118,9 +118,7 @@ public final class QcUi {
 			case UNITS -> "building";
 			case ERASE -> "erase";
 			case ASSIGN -> "assign";
-			case WALLS -> "walls";
-			case GATES -> "gates";
-			case OPEN -> "open";
+			case TWEAK -> "tweak";
 			case CLEAR -> "clear";
 			case ROAD -> "road";
 			case TEMPLATE -> "template";
@@ -133,9 +131,8 @@ public final class QcUi {
 			case UNITS -> "Building: add QC units to the active building (a new one if none is active)";
 			case ERASE -> "Erase: remove planned units, roads and cleared cells";
 			case ASSIGN -> "Assign: move planned units into the active building";
-			case WALLS -> "Partition walls: inner walls on every shared side in the shape";
-			case GATES -> "Partition gates: inner walls with a gate (rooms)";
-			case OPEN -> "Partition open: no partition inside the shape (a hall)";
+			case TWEAK -> "Tweak: click a planned unit to set each side's partition and door;\n"
+					+ "with a shape of 2+ units, set the bulk partition (" + partitionName(QcClientState.tweakPartition) + ") inside it";
 			case CLEAR -> "Clear terrain: carve the cells, level the floor if a ground block is set";
 			case ROAD -> "Road: lay a QC road in the active road style (blocks in the block chooser)";
 			case TEMPLATE -> "Template: stamp the chosen template; R turns it";
@@ -148,12 +145,20 @@ public final class QcUi {
 			case UNITS -> blockIcon(QcClientState.activeStyleBlock("frame"), Items.BRICKS);
 			case ERASE -> new ItemStack(Items.BARRIER);
 			case ASSIGN -> new ItemStack(Items.BRUSH);
-			case WALLS -> new ItemStack(Items.DEEPSLATE_BRICK_WALL);
-			case GATES -> new ItemStack(Items.SPRUCE_FENCE_GATE);
-			case OPEN -> new ItemStack(Items.GLASS);
+			case TWEAK -> new ItemStack(Items.DEBUG_STICK);
 			case CLEAR -> new ItemStack(Items.IRON_SHOVEL);
 			case ROAD -> new ItemStack(Items.DIRT_PATH);
 			case TEMPLATE -> new ItemStack(Items.STRUCTURE_BLOCK);
+		};
+	}
+
+	/** A partition in words: walls, gates, open, design. */
+	public static String partitionName(com.qccore.core.plan.QcPlan.Partition partition) {
+		return switch (partition) {
+			case WALL -> "walls";
+			case GATE -> "gates";
+			case OPEN -> "open";
+			case DESIGN -> "design";
 		};
 	}
 

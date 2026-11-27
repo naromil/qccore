@@ -37,7 +37,7 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
    | building | adds QC units to the active building (a new building with the current design if none is active) |
    | erase | removes planned units, roads and cleared cells |
    | assign | moves planned units into the active building |
-   | partition: walls / gates / open | overrides the building's partition on every shared side inside the shape: a party wall, a wall with a gate (rooms), or nothing (a hall) |
+   | tweak | with the single shape, a click on a planned unit opens its tweak screen: per side, the partition shared with its own building (wall, gate, open, or the design's) and, on an outside ground-storey face, the door (**here** replaces the design's door, **never** keeps one off, **auto** lets the design choose); with a floor, line or box shape, sets the screen's bulk partition (walls, gates, open, design) on every shared side inside the shape |
    | clear terrain | clears the cells (local y 1..8, plus a 0-4 block margin outside the exposed sides and above) and optionally levels the floor plane with a ground block |
    | road | lays a QC road: qckit's 7-wide negative space, lanes 1-4, joint lights every 8 blocks, a medallion at bends/tees/crossings |
    | template | stamps a saved template at the crosshair; **R** turns it a quarter |
@@ -51,7 +51,7 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
 
    The shape under the crosshair is outlined in the tool's colour as what the tool would make: a unit's
    framework (corner posts and beams) for building, template, assign and erase, the shared sides (with a
-   doorway for gates) for partitions, the 7-wide floor for a road, the emptied volume for a clear. The
+   doorway for gates) for the tweak tool's bulk partition, the 7-wide floor for a road, the emptied volume for a clear. The
    white box marks the aimed cell only where the preview lands elsewhere (beside the aimed face, a
    template, the height point of a box).
 

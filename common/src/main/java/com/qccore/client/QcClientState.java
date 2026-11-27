@@ -62,6 +62,8 @@ public final class QcClientState {
 	public static BuildingSpec design = new BuildingSpec("house", "house");
 	/** The road style the road tool lays (a key of the plan's styles). */
 	public static String roadStyle = "street";
+	/** What the tweak tool sets on the shared sides inside a shape of two or more units. */
+	public static com.qccore.core.plan.QcPlan.Partition tweakPartition = com.qccore.core.plan.QcPlan.Partition.WALL;
 	/** The style the block chooser shows first. */
 	public static String chooserStyle;
 	/** The template the template tool stamps (normalised), its name, and its rotation in quarter turns. */

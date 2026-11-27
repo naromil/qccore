@@ -11,12 +11,12 @@ public enum QcTool {
 	ERASE("erase", 0.95F, 0.35F, 0.35F),
 	/** Moves planned units into the active building. */
 	ASSIGN("assign to building", 0.75F, 0.45F, 0.95F),
-	/** Inner walls on every shared side inside the shape. */
-	WALLS("partition: walls", 0.29F, 0.66F, 1.0F),
-	/** Inner walls with a gate on every shared side inside the shape (rooms). */
-	GATES("partition: gates", 0.27F, 0.88F, 0.48F),
-	/** No partition inside the shape (an open hall). */
-	OPEN("partition: open", 0.9F, 0.9F, 0.9F),
+	/**
+	 * Tweaks one planned unit (a click opens {@link QcTweakScreen}: each side's partition and door); with a
+	 * shape of two or more units it sets the bulk partition ({@link QcClientState#tweakPartition}) on every
+	 * shared side inside it, as the old walls / gates / open tools did.
+	 */
+	TWEAK("tweak", 0.29F, 0.66F, 1.0F),
 	/** Clears the terrain of the cells (and levels the floor plane if a ground block is set). */
 	CLEAR("clear terrain", 1.0F, 0.55F, 0.15F),
 	/** Lays a QC road (qckit's 7-wide negative space) in the active road style. */

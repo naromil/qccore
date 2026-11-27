@@ -263,12 +263,28 @@ public final class QcInteraction {
 		}
 		List<Cell> points = List.copyOf(QcClientState.points);
 		QcClientState.points.clear();
+		if (QcClientState.tool == QcTool.TWEAK && shape == BuildShape.SINGLE) {
+			openTweak(client, points.get(0));
+			return;
+		}
 		if (QcClientState.tool == QcTool.TEMPLATE) {
 			edit(() -> stampTemplate(points.get(0)));
 			return;
 		}
 		Set<Cell> cells = QcClientState.modifiers.apply(shape.cells(points));
 		edit(() -> runTool(QcClientState.tool, cells));
+	}
+
+	/** The tweak tool's single click: the tweak screen of a planned unit, or a word on what can't be tweaked. */
+	private static void openTweak(Minecraft client, Cell cell) {
+		QcPlan plan = QcClientState.plan;
+		if (plan.hasUnit(cell)) {
+			client.setScreen(new QcTweakScreen(cell));
+		} else if (plan.roads().containsKey(cell)) {
+			QcClientState.say("QC: road pieces can't be tweaked yet; aim at a planned unit");
+		} else {
+			QcClientState.say("QC: aim at a planned unit to tweak it (a floor or line shape sets the bulk partition)");
+		}
 	}
 
 	/** Runs a plan edit; when it changed something, the plan before it becomes an undo step. */
@@ -332,15 +348,14 @@ public final class QcInteraction {
 				plan.pruneBuildings();
 				return changed;
 			}
-			case WALLS, GATES, OPEN -> {
+			case TWEAK -> {
 				if (valid.size() < 2) {
-					QcClientState.say("QC: a partition needs a shape of two or more units");
+					QcClientState.say("QC: the bulk partition needs a shape of two or more units");
 					return false;
 				}
-				QcPlan.Partition partition = tool == QcTool.WALLS ? QcPlan.Partition.WALL
-						: tool == QcTool.GATES ? QcPlan.Partition.GATE : QcPlan.Partition.OPEN;
+				QcPlan.Partition partition = QcClientState.tweakPartition;
 				int changed = plan.partition(valid, partition);
-				QcClientState.say("QC: " + changed + " shared side(s) set to " + partition.name().toLowerCase(java.util.Locale.ROOT));
+				QcClientState.say("QC: " + changed + " shared side(s) set to " + QcUi.partitionName(partition));
 				return changed > 0;
 			}
 			case CLEAR -> {

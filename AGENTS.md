@@ -37,7 +37,9 @@ the original QCSimple-port spec, is no longer in the repo.)
   dark look of `client/QcUi` (panels, `Chip` buttons with a live selected state, `Stepper` number widgets,
   status pill, tool colours/icons); the tools screen lays out all choices at once and must fit a 427x240 GUI.
 - **Plan model (`core/plan/`):** `QcPlan` = units (`UnitLayers`, flags = partition overrides: wall = party wall,
-  wall+gate = gate, gate alone = open, none = the design's partition) + `unitBuildings` (cell -> building key) +
+  wall+gate = gate, gate alone = open, none = the design's partition) + door overrides (`doors`: per unit, bit
+  side = a door here, bit side + 4 = never a door here; `Building.Party.door`, set from `QcTweakScreen`) +
+  `unitBuildings` (cell -> building key) +
   `buildings` (key -> `BuildingSpec`: template, style name, design overrides) + `styles` (name -> `core/qc/BlockChoice`:
   kind `building`|`road` and role -> block id, shared by buildings and roads) + road cells naming a road style +
   cleared cells (`clearMargin` 0..4, optional `ground`) + legacy per-unit `ComponentMask` (only for `qcsimple` units).

@@ -227,7 +227,13 @@ public final class QcOverlayRenderer {
 			}
 			BlockPos origin = QcInteraction.cellOrigin(cell.pos(), cell.layer());
 			switch (tool) {
-				case WALLS, GATES, OPEN -> drawPartitionPreview(matrices, vertices, cell, origin, preview, tool);
+				case TWEAK -> {
+					if (preview.size() > 1) {
+						drawPartitionPreview(matrices, vertices, cell, origin, preview, tool);
+					} else {
+						drawFrame(matrices, vertices, origin, tool.red, tool.green, tool.blue);
+					}
+				}
 				case ROAD -> LevelRenderer.renderLineBox(matrices, vertices,
 						origin.getX() + 1.0, origin.getY() + FRAME_INSET, origin.getZ() + 1.0,
 						origin.getX() + 8.0, origin.getY() + 1.0 - FRAME_INSET, origin.getZ() + 8.0,
@@ -314,7 +320,7 @@ public final class QcOverlayRenderer {
 		if (east) {
 			LevelRenderer.renderLineBox(matrices, vertices, x + 8 + FRAME_INSET, y + 1, z + 1,
 					x + 9 - FRAME_INSET, y + 8, z + 8, tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
-			if (tool == QcTool.GATES) {
+			if (QcClientState.tweakPartition == com.qccore.core.plan.QcPlan.Partition.GATE) {
 				LevelRenderer.renderLineBox(matrices, vertices, x + 8.5, y + 1, z + 3, x + 8.5, y + 4, z + 6,
 						tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
 			}
@@ -322,7 +328,7 @@ public final class QcOverlayRenderer {
 		if (south) {
 			LevelRenderer.renderLineBox(matrices, vertices, x + 1, y + 1, z + 8 + FRAME_INSET,
 					x + 8, y + 8, z + 9 - FRAME_INSET, tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
-			if (tool == QcTool.GATES) {
+			if (QcClientState.tweakPartition == com.qccore.core.plan.QcPlan.Partition.GATE) {
 				LevelRenderer.renderLineBox(matrices, vertices, x + 3, y + 1, z + 8.5, x + 6, y + 4, z + 8.5,
 						tool.red, tool.green, tool.blue, LAYER_OPAQUE_ALPHA);
 			}

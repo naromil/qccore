@@ -61,10 +61,17 @@ public final class Building {
         int top(int cx, int cz);
     }
 
-    /** The partition override of a shared side ({@code open | wall | gate}), or {@code null} for the design's. */
+    /**
+     * The partition override of a shared side ({@code open | wall | gate}), or {@code null} for the design's;
+     * and the door override of a unit side ({@code here | never}, or {@code null}: the design places the doors).
+     */
     @FunctionalInterface
     public interface Party {
         String override(Unit u, Side side);
+
+        default String door(Unit u, Side side) {
+            return null;
+        }
     }
 
     private static final Comparator<Unit> ORDER = Comparator.comparingInt(Unit::x).thenComparingInt(Unit::s)
@@ -479,18 +486,35 @@ public final class Building {
                 groundUnits.add(u);
             }
         }
+        // the player's door overrides (tweak tool): "here" puts a door on a road or open ground face, "never" keeps one off
+        List<Door> forced = new ArrayList<>();
+        for (Unit u : units) {
+            for (Side s : DOOR_SIDES) {
+                if (!"here".equals(party.door(u, s))) {
+                    continue;
+                }
+                String kind = faceKind(u, s);
+                if (!ground(u)) {
+                    notes.add("door at " + u.x + "," + u.s + "," + u.z + " " + s.facing + " left out: doors go on the ground storey");
+                } else if (kind.equals("road") || kind.equals("open")) {
+                    forced.add(new Door(u, s));
+                } else {
+                    notes.add("door at " + u.x + "," + u.s + "," + u.z + " " + s.facing + " left out: the face is " + kind);
+                }
+            }
+        }
         List<Door> cands = new ArrayList<>();
         for (Side s : DOOR_SIDES) {
             for (Unit u : groundUnits) {
-                if (faceKind(u, s).equals("road")) {
+                if (faceKind(u, s).equals("road") && !"never".equals(party.door(u, s))) {
                     cands.add(new Door(u, s));
                 }
             }
         }
-        if (cands.isEmpty()) {
+        if (cands.isEmpty() && forced.isEmpty()) {
             for (Side s : DOOR_SIDES) {
                 for (Unit u : groundUnits) {
-                    if (faceKind(u, s).equals("open")) {
+                    if (faceKind(u, s).equals("open") && !"never".equals(party.door(u, s))) {
                         cands.add(new Door(u, s));
                     }
                 }
@@ -499,19 +523,25 @@ public final class Building {
                 notes.add("no road frontage: door on an open face");
             }
         }
-        if (cands.isEmpty()) {
+        if (cands.isEmpty() && forced.isEmpty()) {
             notes.add("no door: every ground face is inner or blind");
             return List.of();
         }
         if (t.str("doors", "one").equals("every")) {
             Set<Unit> seen = new HashSet<>();
-            List<Door> out = new ArrayList<>();
+            List<Door> out = new ArrayList<>(forced);
+            for (Door d : forced) {
+                seen.add(d.u);
+            }
             for (Door d : cands) {
                 if (seen.add(d.u)) {
                     out.add(d);
                 }
             }
             return out;
+        }
+        if (!forced.isEmpty() || cands.isEmpty()) {
+            return forced;
         }
         Side side = cands.get(0).side;
         List<Unit> run = new ArrayList<>();

@@ -131,10 +131,18 @@ public final class District {
                     return top;
                 }
             };
-            Building.Party party = (u, side) -> {
-                QcUnit unit = plan.units().peekLayer(u.s()) == null ? null
-                        : plan.units().peekLayer(u.s()).get(new UnitPos(u.x(), u.z()));
-                return unit == null ? null : QcPlan.partyOverride(unit, side.unitSide());
+            Building.Party party = new Building.Party() {
+                @Override
+                public String override(Building.Unit u, Side side) {
+                    QcUnit unit = plan.units().peekLayer(u.s()) == null ? null
+                            : plan.units().peekLayer(u.s()).get(new UnitPos(u.x(), u.z()));
+                    return unit == null ? null : QcPlan.partyOverride(unit, side.unitSide());
+                }
+
+                @Override
+                public String door(Building.Unit u, Side side) {
+                    return plan.door(new Cell(u.x(), u.s(), u.z()), side.unitSide());
+                }
             };
             Building b = new Building(key, entry.getValue(), design, reader, ctx, party).build();
             made.put(key, b);

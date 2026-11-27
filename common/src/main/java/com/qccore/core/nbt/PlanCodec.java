@@ -17,7 +17,7 @@ import net.minecraft.nbt.Tag;
  * <pre>
  * {"units": {@link LayersCodec}, "unitBuildings":[{"x","y","z","b":key}],
  *  "buildings":{key: {"template","style","options":{k: v}}}, "styles":{name: {"kind","blocks":{role: id}}},
- *  "masks":[{"x","y","z","m"}], "clears":[{"x","y","z"}], "clearMargin":int, "ground":String,
+ *  "masks":[{"x","y","z","m"}], "doors":[{"x","y","z","d": here bits 0-3 | never bits 4-7}] (optional), "clears":[{"x","y","z"}], "clearMargin":int, "ground":String,
  *  "roads":[{"x","y","z","s":style}], "decorStyle":String, "decorDensity":0..100, "decorSeed":int}
  * </pre>
  * {@code y} is the editor layer. Masks (legacy units only) equal to all nine components are not
@@ -58,6 +58,15 @@ public final class PlanCodec {
             masks.add(mask);
         }
         tag.put("masks", masks);
+        if (!plan.doors().isEmpty()) {
+            ListTag doors = new ListTag();
+            for (Map.Entry<Cell, Integer> entry : plan.doors().entrySet()) {
+                CompoundTag door = cell(entry.getKey());
+                door.putInt("d", entry.getValue());
+                doors.add(door);
+            }
+            tag.put("doors", doors);
+        }
         ListTag clears = new ListTag();
         for (Cell cell : plan.clears()) {
             clears.add(cell(cell));
@@ -112,6 +121,15 @@ public final class PlanCodec {
             Cell cell = cell(mask);
             if (plan.hasUnit(cell)) {
                 plan.setMask(cell, mask.getInt("m"));
+            }
+        }
+        ListTag doors = tag.getList("doors", Tag.TAG_COMPOUND);
+        for (int i = 0; i < doors.size(); i++) {
+            CompoundTag door = doors.getCompound(i);
+            Cell cell = cell(door);
+            int bits = door.getInt("d") & 0xFF;
+            if (plan.hasUnit(cell) && bits != 0) {
+                plan.doors().put(cell, bits);
             }
         }
         ListTag clears = tag.getList("clears", Tag.TAG_COMPOUND);

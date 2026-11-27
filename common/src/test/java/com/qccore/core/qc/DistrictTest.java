@@ -365,6 +365,55 @@ class DistrictTest {
         }
     }
 
+    /** The tweak tool's door overrides (T26): "here" replaces the design's door, "never" keeps a face shut. */
+    @Test
+    void aDoorHereReplacesTheDesignsDoor() {
+        QcPlan plan = house("house", 2, 1, 2);
+        assertTrue(plan.setDoor(new Cell(1, 1, 0), UnitSide.NORTH, QcPlan.DOOR_HERE));
+        District.Result result = District.build(plan);
+        assertEquals(Map.of(new Cell(1, 1, 0), 0b0001), result.doors(), "one door, on the north face asked for");
+    }
+
+    @Test
+    void aDoorNeverMovesTheDoorOffThatFace() {
+        QcPlan plan = house("house", 2, 1, 2);
+        plan.setDoor(new Cell(0, 1, 0), UnitSide.SOUTH, QcPlan.DOOR_NEVER);
+        plan.setDoor(new Cell(1, 1, 0), UnitSide.SOUTH, QcPlan.DOOR_NEVER);
+        District.Result result = District.build(plan);
+        assertFalse(result.doors().isEmpty(), "the house still gets a door");
+        for (int bits : result.doors().values()) {
+            assertEquals(0, bits & 0b0100, "no door on a south face marked never");
+        }
+    }
+
+    @Test
+    void aDoorHereOnAnUpperStoreyIsLeftOutWithANote() {
+        QcPlan plan = house("house", 2, 1, 2);
+        Map<Cell, Integer> design = District.build(plan).doors();
+        plan.setDoor(new Cell(0, 2, 0), UnitSide.SOUTH, QcPlan.DOOR_HERE);
+        District.Result result = District.build(plan);
+        assertEquals(design, result.doors(), "the design's door stays");
+        assertTrue(result.notes().stream().anyMatch(n -> n.contains("ground storey")), result.notes().toString());
+    }
+
+    @Test
+    void doorOverridesTurnWithThePlanAndSurviveTheCodec() {
+        QcPlan plan = house("house", 2, 1, 2);
+        plan.setDoor(new Cell(0, 1, 0), UnitSide.NORTH, QcPlan.DOOR_HERE);
+        plan.setDoor(new Cell(0, 1, 0), UnitSide.WEST, QcPlan.DOOR_NEVER);
+        QcPlan turned = plan.transformed(1, false, false, 0, 0, 0);
+        Cell moved = new Cell(0, 1, 0);
+        assertEquals(QcPlan.DOOR_HERE, turned.door(moved, UnitSide.EAST), "north turns to east");
+        assertEquals(QcPlan.DOOR_NEVER, turned.door(moved, UnitSide.NORTH), "west turns to north");
+        QcPlan loaded = PlanCodec.fromNbt(PlanCodec.toNbt(plan));
+        assertEquals(plan.doors(), loaded.doors());
+        assertTrue(plan.setDoor(new Cell(0, 1, 0), UnitSide.NORTH, null));
+        assertNull(plan.door(new Cell(0, 1, 0), UnitSide.NORTH));
+        plan.removeUnit(new Cell(0, 1, 0));
+        assertTrue(plan.doors().isEmpty(), "an erased unit takes its overrides along");
+        assertFalse(plan.setDoor(new Cell(9, 1, 9), UnitSide.NORTH, QcPlan.DOOR_HERE), "no unit, no override");
+    }
+
     /** A cell the plan rebuilds (a joined part) is not held back by the door it was recorded with. */
     @Test
     void aRebuiltCellIgnoresItsOwnRecordedDoor() {

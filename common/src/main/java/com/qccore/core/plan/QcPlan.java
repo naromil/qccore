@@ -24,6 +24,8 @@ import java.util.Set;
  *       each building's template, style name and design overrides (qckit's {@code Plan.building});</li>
  *   <li>{@link #styles()}: the blocks chosen per style, role by role ({@link BlockChoice}), shared by
  *       buildings and roads; a template keeps the style names but strips the blocks;</li>
+ *   <li>{@link #doors()}: per unit side, a door forced there ({@code here}) or kept out ({@code never});
+ *       absent = the design places the doors;</li>
  *   <li>{@link #masks()}: legacy only - per unit of a {@code qcsimple} building, which of QCSimple's
  *       nine components it builds (absent = all);</li>
  *   <li>{@link #clears()}: unit cells whose terrain is cleared to air (local y 1..8, plus
@@ -41,6 +43,8 @@ public final class QcPlan {
 
     private UnitLayers units = new UnitLayers();
     private final Map<Cell, Integer> masks = new LinkedHashMap<>();
+    /** Door overrides per unit: bit {@code side} = a door here, bit {@code side + 4} = never a door here. */
+    private final Map<Cell, Integer> doors = new LinkedHashMap<>();
     private final Set<Cell> clears = new LinkedHashSet<>();
     private final Map<Cell, String> roads = new LinkedHashMap<>();
     private final Map<Cell, String> unitBuildings = new LinkedHashMap<>();
@@ -64,11 +68,51 @@ public final class QcPlan {
     public void setUnits(UnitLayers units) {
         this.units = units;
         masks.keySet().removeIf(cell -> !hasUnit(cell));
+        doors.keySet().removeIf(cell -> !hasUnit(cell));
         unitBuildings.keySet().removeIf(cell -> !hasUnit(cell));
     }
 
     public Map<Cell, Integer> masks() {
         return masks;
+    }
+
+    public static final String DOOR_HERE = "here";
+    public static final String DOOR_NEVER = "never";
+
+    /** Unit cell -> door override bits (see {@link #door}); the codec's view, use {@link #setDoor} to edit. */
+    public Map<Cell, Integer> doors() {
+        return doors;
+    }
+
+    /** The door override of one side of a unit: {@code "here"}, {@code "never"}, or {@code null} (the design decides). */
+    public String door(Cell cell, UnitSide side) {
+        int bits = doors.getOrDefault(cell, 0);
+        return (bits & 1 << side.ordinal()) != 0 ? DOOR_HERE
+                : (bits & 1 << side.ordinal() + 4) != 0 ? DOOR_NEVER : null;
+    }
+
+    /**
+     * Sets the door override of one side of a planned unit ({@code "here"}, {@code "never"}, or
+     * {@code null} for the design's choice). Returns whether anything changed; a cell without a unit
+     * is left alone.
+     */
+    public boolean setDoor(Cell cell, UnitSide side, String mode) {
+        if (!hasUnit(cell)) {
+            return false;
+        }
+        int old = doors.getOrDefault(cell, 0);
+        int bits = old & ~(1 << side.ordinal() | 1 << side.ordinal() + 4);
+        if (DOOR_HERE.equals(mode)) {
+            bits |= 1 << side.ordinal();
+        } else if (DOOR_NEVER.equals(mode)) {
+            bits |= 1 << side.ordinal() + 4;
+        }
+        if (bits == 0) {
+            doors.remove(cell);
+        } else {
+            doors.put(cell, bits);
+        }
+        return bits != old;
     }
 
     public Set<Cell> clears() {
@@ -172,6 +216,7 @@ public final class QcPlan {
         }
         layer.remove(cell.pos());
         masks.remove(cell);
+        doors.remove(cell);
         unitBuildings.remove(cell);
         if (layer.isEmpty()) {
             dropEmptyLayer(cell.layer());
@@ -224,11 +269,12 @@ public final class QcPlan {
         return wall ? (gate ? "gate" : "wall") : gate ? "open" : null;
     }
 
-    /** A deep copy (units, flags, buildings, masks, clears, roads and styles). */
+    /** A deep copy (units, flags, door overrides, buildings, masks, clears, roads and styles). */
     public QcPlan copy() {
         QcPlan copy = new QcPlan();
         copy.units = units.copy();
         copy.masks.putAll(masks);
+        copy.doors.putAll(doors);
         copy.unitBuildings.putAll(unitBuildings);
         buildings.forEach((k, v) -> copy.buildings.put(k, v.copy()));
         copy.clears.addAll(clears);
@@ -314,6 +360,15 @@ public final class QcPlan {
         for (Map.Entry<Cell, Integer> entry : masks.entrySet()) {
             out.masks.put(transform.apply(entry.getKey()), entry.getValue());
         }
+        for (Map.Entry<Cell, Integer> entry : doors.entrySet()) {
+            int bits = 0;
+            for (UnitSide side : UnitSide.values()) {
+                int target = transform.apply(side).ordinal();
+                bits |= (entry.getValue() >> side.ordinal() & 1) << target;
+                bits |= (entry.getValue() >> side.ordinal() + 4 & 1) << target + 4;
+            }
+            out.doors.put(transform.apply(entry.getKey()), bits);
+        }
         for (Map.Entry<Cell, String> entry : unitBuildings.entrySet()) {
             out.unitBuildings.put(transform.apply(entry.getKey()), entry.getValue());
         }
@@ -357,6 +412,12 @@ public final class QcPlan {
                 Cell cell = Cell.of(entry.getKey(), layer);
                 units.layer(layer).put(entry.getKey(), new QcUnit(entry.getValue()));
                 setMask(cell, other.mask(cell));
+                Integer door = other.doors.get(cell);
+                if (door == null) {
+                    doors.remove(cell);
+                } else {
+                    doors.put(cell, door);
+                }
                 String building = other.unitBuildings.get(cell);
                 if (building == null) {
                     unitBuildings.remove(cell);
