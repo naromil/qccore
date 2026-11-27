@@ -17,7 +17,8 @@ import org.lwjgl.glfw.GLFW;
 
 /**
  * The hub of the planning tools (key B), in the spirit of Effortless Building's radial menu: the
- * tool and the build shape, the active building (its design and blocks) and road style, the mirror and array
+ * tool and the build shape (with the road style while the road tool is active), the building the building
+ * tool adds to (its design and blocks), the mirror and array
  * modifiers, terrain clearing settings, the plan's undo/redo, and the two ways to finish a plan:
  * apply it to the world or export it as a structure {@code .nbt}.
  *
@@ -33,7 +34,10 @@ public class QcToolsScreen extends Screen {
 	private static final int TILE = 18;
 	private static final int CONTENT_HEIGHT = 199;
 
+	private static final int BUILDING_HEIGHT = 65;
+
 	private EditBox ground;
+	private Chip roadStyle;
 	private int margin;
 	private Cell cursorCell;
 	private int left;
@@ -69,7 +73,7 @@ public class QcToolsScreen extends Screen {
 		this.shapeTop = this.top + 37 + 3;
 		this.planTop = this.shapeTop + 48 + 3;
 		this.terrainTop = this.planTop + 48 + 3;
-		this.modTop = this.top + 80 + 3;
+		this.modTop = this.top + BUILDING_HEIGHT + 3;
 		this.libTop = this.modTop + 80 + 3;
 		int inner = COLUMN - 8;
 		int half = (inner - 2) / 2;
@@ -88,6 +92,13 @@ public class QcToolsScreen extends Screen {
 			}).selected(() -> QcClientState.tool == tool).accent(QcUi.color(tool))
 					.icon(() -> QcUi.icon(tool), true).tip(QcUi.describe(tool) + "\nkey " + (i + 1)));
 		}
+
+		// the road style belongs to the road tool: it sits in the Tool panel's title strip while that tool is active
+		int roadW = 104;
+		this.roadStyle = this.addRenderableWidget(new Chip(this.left + COLUMN - roadW - 2, this.top + 1, roadW, QcUi.HEADER_HEIGHT - 1,
+				"", this::stepRoadStyle).label(() -> "road style: " + QcClientState.roadStyle + "  ›").accent(QcUi.color(QcTool.ROAD))
+				.tip("The style the road tool lays; click for the next road style of the plan"));
+		this.roadStyle.visible = QcClientState.tool == QcTool.ROAD;
 
 		// 2. Shapes
 		y = this.shapeTop + body;
@@ -138,16 +149,19 @@ public class QcToolsScreen extends Screen {
 		this.ground.setTooltip(QcUi.tip("Fills the floor plane of cleared cells; leave empty for none"));
 		this.addRenderableWidget(this.ground);
 
-		// 5. Building: the active building, its design and blocks, the road style
+		// 5. Building: which building the building tool adds to (in words), its design and blocks
 		y = this.top + body;
-		this.addRenderableWidget(new Chip(this.right + 4, y, 14, CHIP_H, "‹", () -> stepBuilding(-1))
+		int arrow = 11;
+		int newW = 26;
+		int labelW = inner - 2 * arrow - newW - 6;
+		this.addRenderableWidget(new Chip(this.right + 4, y, arrow, CHIP_H, "‹", () -> stepBuilding(-1))
 				.tip("Previous building of the plan"));
-		this.addRenderableWidget(new Chip(this.right + 20, y, inner - 32 - 52, CHIP_H, "", () -> stepBuilding(1))
+		this.addRenderableWidget(new Chip(this.right + 6 + arrow, y, labelW, CHIP_H, "", () -> stepBuilding(1))
 				.label(QcToolsScreen::buildingLabel).accent(QcUi.color(QcTool.UNITS))
-				.tip("The building the building tool adds to; \"new\" starts one with the current design"));
-		this.addRenderableWidget(new Chip(this.right + 4 + inner - 30 - 52, y, 14, CHIP_H, "›", () -> stepBuilding(1))
+				.tip("The building the building tool adds to; click or ‹ › to step through the plan's buildings"));
+		this.addRenderableWidget(new Chip(this.right + 8 + arrow + labelW, y, arrow, CHIP_H, "›", () -> stepBuilding(1))
 				.tip("Next building of the plan"));
-		this.addRenderableWidget(new Chip(this.right + 4 + inner - 50, y, 50, CHIP_H, "New", () -> {
+		this.addRenderableWidget(new Chip(this.right + 4 + inner - newW, y, newW, CHIP_H, "New", () -> {
 			QcClientState.building = null;
 			QcClientState.tool = QcTool.UNITS;
 		}).selected(() -> QcClientState.activeBuilding() == null)
@@ -169,10 +183,6 @@ public class QcToolsScreen extends Screen {
 			}
 		}).tip(this.cursorCell == null ? "Aim at a planned unit before opening this screen"
 				: "Make the building of the aimed unit the active one"));
-		y += ROW;
-		this.addRenderableWidget(new Chip(this.right + 4, y, inner, CHIP_H, "", this::stepRoadStyle)
-				.label(() -> "Road style: " + QcClientState.roadStyle + "  ›").accent(QcUi.color(QcTool.ROAD))
-				.tip("The style the road tool lays; click for the next road style of the plan"));
 
 		// 6. Modifiers
 		Modifiers modifiers = QcClientState.modifiers;
@@ -250,9 +260,11 @@ public class QcToolsScreen extends Screen {
 		g.drawString(this.font, "clear margin", this.left + 6, this.terrainTop + body + 3, QcUi.MUTED, false);
 		g.drawString(this.font, "ground", this.left + 6, this.terrainTop + body + ROW + 3, QcUi.MUTED, false);
 
-		QcUi.panel(g, this.font, this.right, this.top, COLUMN, 80, "Building", QcUi.color(QcTool.UNITS));
-		g.drawString(this.font, this.font.plainSubstrByWidth(styleStatus(), COLUMN - 12), this.right + 6,
-				this.top + body + 3 * ROW + 3, QcUi.MUTED, false);
+		this.roadStyle.visible = tool == QcTool.ROAD;
+		QcUi.panel(g, this.font, this.right, this.top, COLUMN, BUILDING_HEIGHT, "Building", QcUi.color(QcTool.UNITS));
+		String status = styleStatus();
+		g.drawString(this.font, this.font.plainSubstrByWidth(status, COLUMN - 12), this.right + 6,
+				this.top + body + 2 * ROW + 3, missingRoles() > 0 ? QcUi.WARN : QcUi.MUTED, false);
 		QcUi.panel(g, this.font, this.right, this.modTop, COLUMN, 80, "Modifiers"
 				+ (QcClientState.modifiers.isActive() ? " · on" : ""), QcUi.WARN);
 		int y = this.modTop + body + 2 * ROW + 2;
@@ -333,18 +345,35 @@ public class QcToolsScreen extends Screen {
 		reload();
 	}
 
+	/** The building the building tool adds to, in words: "adding to: house B · 6 units" or "next unit: a new house". */
 	private static String buildingLabel() {
 		com.qccore.core.plan.BuildingSpec active = QcClientState.activeBuilding();
-		com.qccore.core.plan.BuildingSpec spec = active == null ? QcClientState.design : active;
-		return (active == null ? "new" : QcClientState.building) + " · " + spec.template;
+		if (active == null) {
+			return "next unit: a new " + QcClientState.design.template;
+		}
+		return "adding to: " + active.template + " " + QcClientState.building + " · "
+				+ units(QcClientState.plan, QcClientState.building);
 	}
 
-	/** The edited design's style and how many of its reached roles still need a block. */
+	/** "1 unit" / "N units" of one building of the plan. */
+	static String units(QcPlan plan, String key) {
+		long count = plan.unitBuildings().values().stream().filter(key::equals).count();
+		return count + (count == 1 ? " unit" : " units");
+	}
+
+	/** How many reached roles of the edited design's style still need a block. */
+	private static int missingRoles() {
+		java.util.Set<String> missing = QcBlockPreview.missing().get(QcClientState.editedDesign().style);
+		return missing == null ? 0 : missing.size();
+	}
+
+	/** What the edited design's style still lacks, in plain words. */
 	private static String styleStatus() {
-		com.qccore.core.plan.BuildingSpec spec = QcClientState.editedDesign();
-		java.util.Set<String> missing = QcBlockPreview.missing().get(spec.style);
-		return "style " + spec.style + (missing == null || missing.isEmpty() ? " · blocks complete"
-				: " · " + missing.size() + " role(s) without a block");
+		int missing = missingRoles();
+		if (missing == 0) {
+			return "blocks complete · style " + QcClientState.editedDesign().style;
+		}
+		return missing + (missing == 1 ? " role" : " roles") + " without a block → Blocks…";
 	}
 
 	/** Cycles the active building through "new" and the plan's buildings. */

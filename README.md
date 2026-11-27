@@ -57,8 +57,11 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
 
    **LMB** cancels a shape in progress, otherwise erases the aimed cell. **Shift/Ctrl + RMB/LMB** set or
    clear a single wall/gate on the aimed face, as before.
-3. **Buildings and blocks** (tools screen, Building panel): **‹ ›** picks the active building, **New** makes
-   the next unit start a new one, **Pick aimed** takes the building of the aimed unit. **Design…** sets the
+3. **Buildings and blocks** (tools screen, Building panel): the top row says which building the building tool
+   adds to ("adding to: house B · 6 units", or "next unit: a new house"); **‹ ›** steps through the plan's
+   buildings, **New** makes the next unit start a new one, **Pick aimed** takes the building of the aimed unit.
+   The line under the buttons says whether the active style still lacks blocks. The road tool's style sits in
+   the Tool panel's title strip while the road tool is active. **Design…** sets the
    template and its overrides: roof (hip, gable, gambrel, mansard, flat, garden, none; rise and ridge),
    facades per storey (a mask or a qckit piece such as framed, arched, twin, bay, balcony, timber, arcade;
    `bay|balcony` is a rhythm along the run), run ends and blind faces, piers (normal, dense, 2x2, thick),
