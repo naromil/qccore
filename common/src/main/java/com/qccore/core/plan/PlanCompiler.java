@@ -28,12 +28,18 @@ import net.minecraft.world.level.block.state.BlockState;
  *       never overwrite a generated block.</li>
  *   <li>Clears: local y 1..8 of every cleared cell plus the margin outside its exposed sides and
  *       above it, and the 7 blocks of headroom over every road column, minus whatever the plan
- *       places there.</li>
+ *       places there. A clear never takes down a standing QC unit (T32): it leaves the 9x9x9 box of
+ *       every standing building and road cell alone, and within {@link #STANDING_REACH} blocks of a
+ *       standing building's box, or in the cell over it where its roof stands, it only clears natural
+ *       terrain ({@link Compiled#gentle}), so outward decoration, piers and roofs stay.</li>
  *   <li>Ground: the floor plane (local y 0) of every cleared cell without a unit or road, to be
  *       filled where the world is air.</li>
  * </ol>
  */
 public final class PlanCompiler {
+
+    /** Blocks outside a building's cells that its outward decoration and thick piers can reach. */
+    public static final int STANDING_REACH = 2;
 
     private PlanCompiler() {
     }
@@ -42,9 +48,11 @@ public final class PlanCompiler {
      * The compiled plan. {@code blocks} keeps insertion order. {@code problems} stop an apply;
      * {@code notes} are worth showing; {@code reached}/{@code missing} are the roles each style's
      * buildings and roads used, and the required ones with no block; {@code doors} the door sides of every
-     * generated unit ({@link District.Result#doors()}).
+     * generated unit ({@link District.Result#doors()}). {@code gentle} are cleared positions next to a standing
+     * building (its outward decoration or roof may stand there): the apply clears them only where the
+     * world holds natural terrain.
      */
-    public record Compiled(Map<BlockPos, BlockState> blocks, Set<BlockPos> air, Map<BlockPos, BlockState> ground,
+    public record Compiled(Map<BlockPos, BlockState> blocks, Set<BlockPos> air, Set<BlockPos> gentle, Map<BlockPos, BlockState> ground,
                            List<BlockPos> unitOrigins, List<String> problems, List<String> notes,
                            Map<String, Set<String>> reached, Map<String, Set<String>> missing, Map<Cell, Integer> doors) {
 
@@ -127,6 +135,11 @@ public final class PlanCompiler {
             problems.add("ground block '" + plan.ground + "' is not a block");
         }
         int margin = Math.max(0, Math.min(QcPlan.MAX_CLEAR_MARGIN, plan.clearMargin));
+        // T32 (user: "the clear terrain tool should avoid destroying qc units themselves"): what stands
+        Set<Cell> standingBuildings = around.standingBuildings(plan);
+        Set<Cell> standingCells = new LinkedHashSet<>(standingBuildings);
+        standingCells.addAll(around.standingRoads(plan));
+        Set<BlockPos> gentle = new LinkedHashSet<>();
         for (Cell cell : plan.clears()) {
             BlockPos o = origin(anchor, cell);
             int west = plan.clears().contains(cell.offset(-1, 0, 0)) ? 0 : margin;
@@ -137,11 +150,17 @@ public final class PlanCompiler {
             for (int x = -west; x <= 8 + east; x++) {
                 for (int z = -north; z <= 8 + south; z++) {
                     for (int y = 1; y <= 8 + top; y++) {
-                        air.add(o.offset(x, y, z));
+                        BlockPos p = o.offset(x, y, z);
+                        if (standingCells.isEmpty()) {
+                            air.add(p);
+                        } else if (!insideAny(standingCells, anchor, p, 0, 0)) {
+                            (insideAny(standingBuildings, anchor, p, STANDING_REACH, 8) ? gentle : air).add(p);
+                        }
                     }
                 }
             }
-            if (groundState != null && !plan.hasUnit(cell) && !plan.roads().containsKey(cell)) {
+            if (groundState != null && !plan.hasUnit(cell) && !plan.roads().containsKey(cell)
+                    && !standingCells.contains(cell)) {
                 for (int x = 0; x <= 8; x++) {
                     for (int z = 0; z <= 8; z++) {
                         ground.put(o.offset(x, 0, z), groundState);
@@ -150,10 +169,40 @@ public final class PlanCompiler {
             }
         }
         air.removeAll(blocks.keySet());
+        gentle.removeAll(blocks.keySet());
+        gentle.removeAll(air);
         ground.keySet().removeAll(blocks.keySet());
         ground.keySet().removeAll(air);
-        return new Compiled(blocks, air, ground, origins, problems, district.notes(), district.reached(),
+        ground.keySet().removeAll(gentle);
+        return new Compiled(blocks, air, gentle, ground, origins, problems, district.notes(), district.reached(),
                 district.missing(), district.doors());
+    }
+
+    /**
+     * Whether {@code p} lies in the box of one of {@code cells} (local 0..8 on every axis, shared planes
+     * included), widened by {@code reach} blocks sideways and {@code above} blocks upwards.
+     */
+    static boolean insideAny(Set<Cell> cells, BlockPos anchor, BlockPos p, int reach, int above) {
+        int x = p.getX() - anchor.getX();
+        int y = p.getY() - anchor.getY();
+        int z = p.getZ() - anchor.getZ();
+        // the cells whose widened box can hold p
+        for (int cx = Math.floorDiv(x - 8 - reach, 8); cx <= Math.floorDiv(x + reach, 8); cx++) {
+            for (int cz = Math.floorDiv(z - 8 - reach, 8); cz <= Math.floorDiv(z + reach, 8); cz++) {
+                for (int cl = Math.floorDiv(y - 8 - above, 8); cl <= Math.floorDiv(y, 8); cl++) {
+                    if (!cells.contains(new Cell(cx, cl, cz))) {
+                        continue;
+                    }
+                    int lx = x - cx * 8;
+                    int ly = y - cl * 8;
+                    int lz = z - cz * 8;
+                    if (lx >= -reach && lx <= 8 + reach && lz >= -reach && lz <= 8 + reach && ly >= 0 && ly <= 8 + above) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /** World origin of a cell: {@code anchor + 8 * (x, layer, z)}. */

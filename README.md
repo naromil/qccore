@@ -38,7 +38,7 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
    | erase | removes planned units, roads and cleared cells |
    | assign | moves planned units into the active building |
    | tweak | with the single shape, a click on a planned unit opens its tweak screen: per side, the partition shared with its own building (wall, gate, open, or the design's) and, on an outside ground-storey face, the door (**here** replaces the design's door, **never** keeps one off, **auto** lets the design choose); with a floor, line or box shape, sets the screen's bulk partition (walls, gates, open, design) on every shared side inside the shape |
-   | clear terrain | clears the cells (local y 1..8, plus a 0-4 block margin outside the exposed sides and above) and optionally levels the floor plane with a ground block |
+   | clear terrain | clears the cells (local y 1..8, plus a 0-4 block margin outside the exposed sides and above) and optionally levels the floor plane with a ground block; it never takes down a standing QC building or road: their cells are left out, and next to a standing building (its outward decoration, piers, roof) only natural terrain is cleared |
    | road | lays a QC road: qckit's 7-wide negative space, lanes 1-4, joint lights every 8 blocks, a medallion at bends/tees/crossings |
    | template | stamps a saved template at the crosshair; **R** turns it a quarter |
 

@@ -459,7 +459,22 @@ public final class QcInteraction {
 				return changed > 0;
 			}
 			case CLEAR -> {
-				return plan.clears().addAll(valid);
+				// T32: a standing building or road is never cleared; its cells are left out of the clear
+				Surroundings standing = QcSurroundings.of(QcClientState.nearbyUnits.values(), QcClientState.anchor);
+				Set<Cell> clear = new java.util.LinkedHashSet<>();
+				int skipped = 0;
+				for (Cell cell : valid) {
+					if (standing.buildings().contains(cell) || standing.roads().contains(cell)) {
+						skipped++;
+					} else {
+						clear.add(cell);
+					}
+				}
+				if (skipped > 0) {
+					QcClientState.say("QC: " + skipped + " cell(s) left out: they hold a standing building or road,"
+							+ " which a clear never takes down");
+				}
+				return plan.clears().addAll(clear);
 			}
 			case ROAD -> {
 				BlockChoice style = plan.styles().get(QcClientState.roadStyle);

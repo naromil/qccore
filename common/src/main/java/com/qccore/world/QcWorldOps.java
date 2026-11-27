@@ -113,6 +113,15 @@ public final class QcWorldOps {
         return out;
     }
 
+    /** Replaces with air every position that holds natural terrain ({@link #natural}), recording into {@code undo}. */
+    static void clearNatural(ServerLevel world, Collection<BlockPos> positions, Map<BlockPos, BlockState> undo) {
+        for (BlockPos pos : positions) {
+            if (inWorld(world, pos) && natural(world.getBlockState(pos))) {
+                clear(world, pos, undo);
+            }
+        }
+    }
+
     /**
      * Natural terrain a new unit's shell may clear: the scanner's terrain blocks (ground, stone, sand,
      * water...), leaves and anything replaceable (grass, flowers, snow layers). Anything else is taken

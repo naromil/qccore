@@ -577,6 +577,67 @@ public class QcPlanGameTests implements FabricGameTest {
         ctx.succeed();
     }
 
+    /**
+     * T32 (user: "the clear terrain tool should avoid destroying qc units themselves"): a cleared cell beside a
+     * standing building and a standing road clears the terrain in it, natural terrain next to the building
+     * too, but never the building's wall, its outward sill, its roof over the cell's margin, or the road's
+     * lamp; undo puts the terrain back.
+     */
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    public void aClearNeverTakesDownStandingUnits(GameTestHelper ctx) {
+        ServerLevel world = ctx.getLevel();
+        ResourceLocation dimension = world.dimension().location();
+        BlockPos anchor = ctx.absolutePos(BlockPos.ZERO).offset(0, 40, 1100);
+        clearIndex(world, anchor.offset(8, 8, 8));
+        QcUnitIndex index = QcUnitIndex.get(world);
+        // a standing house in cell (1, 1, 0) east of the cleared cell (0, 1, 0), a standing road south of it
+        BlockPos house = anchor.offset(8, 8, 0);
+        BlockPos road = anchor.offset(0, 8, 8);
+        index.put(dimension, house, new QcUnitRecord(house, 3, 0, QcUnitRecord.BUILDING, 1, 4242));
+        index.put(dimension, road, new QcUnitRecord(road, 0, 0, QcUnitRecord.ROAD, 0));
+        BlockPos cell = anchor.offset(0, 8, 0);
+        BlockPos rock = cell.offset(2, 4, 4);
+        BlockPos rockByHouse = cell.offset(7, 3, 4);
+        BlockPos sill = cell.offset(7, 2, 5);
+        BlockPos wall = cell.offset(8, 3, 4);
+        BlockPos roof = cell.offset(9, 9, 4);
+        BlockPos lamp = cell.offset(4, 1, 9);
+        world.setBlockAndUpdate(rock, Blocks.STONE.defaultBlockState());
+        world.setBlockAndUpdate(rockByHouse, Blocks.DIRT.defaultBlockState());
+        world.setBlockAndUpdate(sill, Blocks.STONE_BRICK_SLAB.defaultBlockState());
+        world.setBlockAndUpdate(wall, Blocks.BRICKS.defaultBlockState());
+        world.setBlockAndUpdate(roof, Blocks.DARK_OAK_STAIRS.defaultBlockState());
+        world.setBlockAndUpdate(lamp.below(), Blocks.STONE_BRICKS.defaultBlockState());
+        world.setBlockAndUpdate(lamp, Blocks.LANTERN.defaultBlockState());
+
+        QcPlan plan = new QcPlan();
+        plan.clears().add(new Cell(0, 1, 0));
+        plan.clearMargin = 2;
+        BlockPalette palette = new BlockPalette();
+        Defaults.applyTo(palette);
+        ServerPlayer player = ctx.makeMockServerPlayerInLevel();
+        QcResult result = QcPlanService.apply(player, anchor, plan, palette);
+        if (!result.ok()) {
+            throw new AssertionError("the clear was refused: " + result.message());
+        }
+        if (!world.getBlockState(rock).isAir() || !world.getBlockState(rockByHouse).isAir()) {
+            throw new AssertionError("the clear left terrain in the cell");
+        }
+        expect(world, wall, Blocks.BRICKS, "the standing house's wall on the shared plane");
+        expect(world, sill, Blocks.STONE_BRICK_SLAB, "the standing house's outward sill");
+        expect(world, roof, Blocks.DARK_OAK_STAIRS, "the standing house's roof over the clear's margin");
+        expect(world, lamp, Blocks.LANTERN, "the standing road's lamp");
+
+        QcResult undo = QcUndoService.undo(player);
+        if (!undo.ok()) {
+            throw new AssertionError("undo was refused: " + undo.message());
+        }
+        expect(world, rock, Blocks.STONE, "restored terrain");
+        expect(world, rockByHouse, Blocks.DIRT, "restored terrain next to the house");
+        clearIndex(world, anchor.offset(8, 8, 8));
+        ctx.succeed();
+    }
+
     private static void clearIndex(ServerLevel world, BlockPos center) {
         QcUnitIndex index = QcUnitIndex.get(world);
         ResourceLocation dimension = world.dimension().location();

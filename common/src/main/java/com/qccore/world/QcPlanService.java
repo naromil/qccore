@@ -64,7 +64,7 @@ public final class QcPlanService {
         if (!compiled.problems().isEmpty()) {
             return new QcResult(false, QcResult.first(compiled.problems()));
         }
-        if (compiled.blocks().isEmpty() && compiled.air().isEmpty() && compiled.ground().isEmpty()) {
+        if (compiled.blocks().isEmpty() && compiled.air().isEmpty() && compiled.gentle().isEmpty() && compiled.ground().isEmpty()) {
             return new QcResult(false, "the plan produced no blocks");
         }
 
@@ -84,6 +84,8 @@ public final class QcPlanService {
             QcWorldOps.clearBlocks(world, stale(world, plan, Join.joined(planned, plan), palette, anchor, around, compiled), undo);
         }
         QcWorldOps.clearBlocks(world, compiled.air(), undo);
+        // next to a standing building only natural terrain goes; its decoration and roof stay (T32)
+        QcWorldOps.clearNatural(world, compiled.gentle(), undo);
         QcWorldOps.clearFootprint(world, fullOrigins(plan, anchor),
                 QcUnitIndex.get(world).units(world.dimension().location()).keySet(), otherCells(plan, anchor), undo);
         QcWorldOps.placeBlocks(world, compiled.blocks(), undo);

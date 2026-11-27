@@ -48,7 +48,9 @@ the original QCSimple-port spec, is no longer in the repo.)
   every style (the template form). `PlanCompiler` is the one plan -> blocks conversion (server apply, client ghost
   preview, `.nbt` export): `core/qc/District` for every qckit building and road (parsed with
   `BlockIds.parseLenient`, which drops properties a block does not have), then the masked legacy `UnitExporter.export`
-  for `qcsimple` units (`putIfAbsent`), then clears + 7 blocks of road headroom as air, then ground. Unchosen required
+  for `qcsimple` units (`putIfAbsent`), then clears + 7 blocks of road headroom as air (a clear skips the boxes of
+  standing building/road cells, and within `STANDING_REACH` = 2 blocks of a standing building's box or in the cell
+  over it goes to `Compiled.gentle`, cleared on apply only where the world is natural terrain, T32), then ground. Unchosen required
   roles are compile problems ("style 'x' has no block for frame, ..."); doors onto nothing, unreachable units and road
   collisions are notes. `PlanCodec` is the wire/file format and loads pre-rework plans (units -> one `qcsimple`
   building, lane-list `roadStyles` -> road styles). Everything in `core/plan` and `core/qc` except
