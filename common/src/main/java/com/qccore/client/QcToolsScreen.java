@@ -40,6 +40,8 @@ public class QcToolsScreen extends Screen {
 	private Chip roadStyle;
 	private int margin;
 	private Cell cursorCell;
+	/** The planned unit under the crosshair when the screen opened, ghosts included (for Pick aimed). */
+	private Cell aimedUnit;
 	private int left;
 	private int right;
 	private int top;
@@ -66,6 +68,7 @@ public class QcToolsScreen extends Screen {
 		// a re-init (window resize) rebuilds the ground field: keep what was typed into it
 		commit();
 		this.cursorCell = this.minecraft == null ? null : QcInteraction.target(this.minecraft);
+		this.aimedUnit = this.minecraft == null ? null : QcInteraction.aimedPlanUnit(this.minecraft);
 		this.margin = QcClientState.plan.clearMargin;
 		this.left = this.width / 2 - COLUMN - GAP / 2;
 		this.right = this.width / 2 + GAP / 2;
@@ -176,13 +179,17 @@ public class QcToolsScreen extends Screen {
 			this.minecraft.setScreen(new QcBlockChooserScreen(this));
 		}).accent(QcUi.OK).tip("Choose the block of every role of every style, and save or load kits"));
 		this.addRenderableWidget(new Chip(this.right + 8 + 2 * third, y, third, CHIP_H, "Pick aimed", () -> {
-			String key = this.cursorCell == null ? null : QcClientState.plan.building(this.cursorCell);
+			String key = this.aimedUnit == null ? null : QcClientState.plan.building(this.aimedUnit);
 			if (key != null) {
 				QcClientState.building = key;
 				QcClientState.design = QcClientState.plan.buildings().get(key).copy();
 			}
-		}).tip(this.cursorCell == null ? "Aim at a planned unit before opening this screen"
-				: "Make the building of the aimed unit the active one"));
+		}).selected(() -> this.aimedUnit != null
+				&& QcClientState.activeBuilding() != null
+				&& java.util.Objects.equals(QcClientState.building, QcClientState.plan.building(this.aimedUnit)))
+				.tip(this.aimedUnit == null ? "Aim at a planned unit before opening this screen"
+						: "Make building " + QcClientState.plan.building(this.aimedUnit)
+								+ " (the aimed unit's) the active one"));
 
 		// 6. Modifiers
 		Modifiers modifiers = QcClientState.modifiers;

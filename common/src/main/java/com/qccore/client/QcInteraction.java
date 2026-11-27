@@ -33,6 +33,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -606,6 +607,57 @@ public final class QcInteraction {
 		double t = horizontal < 1.0E-6 ? 0.0 : ((cx - eye.x) * look.x + (cz - eye.z) * look.z) / horizontal;
 		double y = eye.y + Math.max(0.0, t) * look.y;
 		return Math.floorDiv(Mth.floor(y) - anchor.getY(), 8);
+	}
+
+	/** How far {@link #aimedPlanUnit} looks along the crosshair, in blocks. */
+	private static final double PLAN_RAY_RANGE = 128.0;
+
+	/**
+	 * The first planned unit that holds a building along the crosshair ray, or {@code null}. Planned units are
+	 * only ghosts, so the vanilla hit passes through them to the ground or wall behind; this walks the ray
+	 * through the plan's cells instead, up to the first real block (a cell that block belongs to still counts)
+	 * or {@link #PLAN_RAY_RANGE}. On a shared plane (local 0 = the neighbour's local 8) both cells are tried.
+	 */
+	@Nullable
+	public static Cell aimedPlanUnit(Minecraft client) {
+		Entity camera = client.getCameraEntity();
+		BlockPos anchor = QcClientState.anchor;
+		if (!QcClientState.active || camera == null || anchor == null || client.level == null) {
+			return null;
+		}
+		QcPlan plan = QcClientState.plan;
+		Vec3 eye = camera.getEyePosition(1.0F);
+		Vec3 look = camera.getViewVector(1.0F);
+		double range = PLAN_RAY_RANGE;
+		HitResult wall = client.level.clip(new ClipContext(eye,
+				eye.add(look.scale(range)), ClipContext.Block.OUTLINE,
+				ClipContext.Fluid.NONE, camera));
+		if (wall.getType() == HitResult.Type.BLOCK) {
+			range = Math.min(range, wall.getLocation().distanceTo(eye) + 0.5);
+		}
+		for (double t = 0.0; t <= range; t += 0.2) {
+			Vec3 at = eye.add(look.scale(t));
+			int bx = Mth.floor(at.x) - anchor.getX();
+			int by = Mth.floor(at.y) - anchor.getY();
+			int bz = Mth.floor(at.z) - anchor.getZ();
+			int cx = Math.floorDiv(bx, 8);
+			int cy = Math.floorDiv(by, 8);
+			int cz = Math.floorDiv(bz, 8);
+			int ox = Math.floorMod(bx, 8) == 0 ? 1 : 0;
+			int oy = Math.floorMod(by, 8) == 0 ? 1 : 0;
+			int oz = Math.floorMod(bz, 8) == 0 ? 1 : 0;
+			for (int dx = 0; dx <= ox; dx++) {
+				for (int dy = 0; dy <= oy; dy++) {
+					for (int dz = 0; dz <= oz; dz++) {
+						Cell cell = new Cell(cx - dx, cy - dy, cz - dz);
+						if (plan.building(cell) != null) {
+							return cell;
+						}
+					}
+				}
+			}
+		}
+		return null;
 	}
 
 	/** The keybind pump: world guard, keybinds and the HUD message lifetime. */
