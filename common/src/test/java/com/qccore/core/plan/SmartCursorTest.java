@@ -113,11 +113,30 @@ class SmartCursorTest {
         assertEquals(1, SmartCursor.groundLayer(new Cell(0, 2, 0), grid), "the nearer one wins");
         grid.units.add(new Cell(0, 2, 1));
         assertEquals(2, SmartCursor.groundLayer(new Cell(0, 2, 0), grid), "on a tie the rule's own layer wins");
+        Grid up = new Grid();
+        up.units.add(new Cell(1, 3, 0));
+        assertEquals(2, SmartCursor.groundLayer(new Cell(0, 2, 0), up),
+                "a neighbour one layer up: stay on the ground, not in mid-air (T31)");
         Grid far = new Grid();
         far.units.add(new Cell(0, 4, 1));
         assertEquals(2, SmartCursor.groundLayer(new Cell(0, 2, 0), far), "more than one layer away: ignored");
         Grid distant = new Grid();
         distant.units.add(new Cell(3, 1, 0));
         assertEquals(2, SmartCursor.groundLayer(new Cell(0, 2, 0), distant), "three cells away: ignored");
+    }
+
+    @Test
+    void anUpperStoreyBesideLowerGroundKeepsTheCursorOnTheGround() {
+        // T31, the user's screenshot: a two-storey house (layers 1 and 2) next to ground one layer lower than
+        // its floor, aimed at the ground in the cell beside its ground storey; only the upper storey is within
+        // reach at layer 1 above the aim. Before: the cursor rose to the house's upper layer and floated.
+        Grid grid = new Grid();
+        grid.units.add(new Cell(1, 1, 0));
+        grid.units.add(new Cell(1, 2, 0));
+        assertEquals(0, SmartCursor.groundLayer(new Cell(0, 0, 0), grid), "no unit at layers 0 or -1 near: stay");
+        Grid stacked = new Grid();
+        stacked.units.add(new Cell(0, 2, 0));
+        stacked.units.add(new Cell(1, 3, 0));
+        assertEquals(3, SmartCursor.groundLayer(new Cell(0, 2, 0), stacked), "standing on a unit, it may rise");
     }
 }

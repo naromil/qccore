@@ -58,7 +58,7 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
    The building and template tools look round the aim: aimed near one end of a unit's side, they take the
    cell round that corner when it closes a gap to another unit or fronts a road (the straight cell
    otherwise); aimed down at the ground, they take the layer of a unit up to two cells away when it is
-   within one layer; and they never pick a cell in front of a door over one that isn't. **Hold Shift**
+   the same or one lower (never one higher, which would leave the new unit floating over the ground); and they never pick a cell in front of a door over one that isn't. **Hold Shift**
    for exactly the aimed cell.
 
    **LMB** cancels a shape in progress, otherwise erases the aimed cell. **Ctrl + RMB** sets a gate,

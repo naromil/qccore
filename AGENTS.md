@@ -80,7 +80,8 @@ the original QCSimple-port spec, is no longer in the repo.)
   `core/plan/SmartCursor` adjust a placing tool's cell (T29, review #52 rules 1 3 4): near either end (2.5
   blocks) of a unit's side face the cell round the corner wins when it touches more other units or fronts a road
   (ties keep the straight cell; never onto a unit, road or door front); on the ground the layer of the nearest
-  unit within 2 cells and ±1 layer; standing door fronts and other buildings' planned door fronts are avoided.
+  unit within 2 cells on the same or the layer below (the layer above only when the aimed cell holds a unit, so
+  nothing floats in mid-air, T31); standing door fronts and other buildings' planned door fronts are avoided.
   Shift + RMB with a placing tool is that exact-cell override, not the single-wall click.
 - **Legacy nine components** (QCSimple, `qcsimple` template only) in `core/palette/`, fixed order `frameworkBlock, rowBlock, columnBlock, wallBlock,
   floorBlock` (block ids, seeded by `Defaults.applyTo` with `polished_deepslate`, `chiseled_deepslate`, `spruce_log`,

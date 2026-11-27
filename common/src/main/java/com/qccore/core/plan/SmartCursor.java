@@ -13,9 +13,10 @@ import com.qccore.core.UnitSide;
  *       units, or fronts a road where the straight cell doesn't. Ties keep the straight cell, so the
  *       cursor only moves when the surroundings give a reason.</li>
  *   <li><b>On the ground</b> ({@link #groundLayer}): aiming down at terrain, the layer of the nearest
- *       unit within {@link #GROUND_REACH} cells, if it is within one layer of the floor-plane rule's
- *       ({@code Alignment.nearestLayer}), so a new unit lines up with its neighbours on uneven
- *       ground.</li>
+ *       unit within {@link #GROUND_REACH} cells, if it is the floor-plane rule's
+ *       ({@code Alignment.nearestLayer}) or one below, so a new unit lines up with its neighbours on uneven
+ *       ground. One above only when the cell would stand on a unit: never in mid-air over the aimed
+ *       ground (T31).</li>
  *   <li><b>Doors</b>: a cell in front of a door is never picked over one that isn't.</li>
  * </ol>
  */
@@ -86,12 +87,18 @@ public final class SmartCursor {
 
     /**
      * The layer a placing tool takes when aimed down at the ground in {@code cell} (the layer the
-     * floor-plane rule gave): the layer of the nearest unit round it, when that is within one layer.
+     * floor-plane rule gave): the layer of the nearest unit round it, when that is the same or one below;
+     * one above only when a unit fills {@code cell} itself, so the raised cell stands on it.
      */
     public static int groundLayer(Cell cell, Around around) {
+        // T31 (user: "the selection should not assume the user like to build something in the mid-air unless
+        // there isn't really anything around"): the layer above is taken only when the cell would stand on
+        // a unit; a neighbour one layer up alone (an upper storey beside a lower piece of ground) would leave
+        // the new unit floating over the aimed ground
+        boolean upSupported = around.unit(cell);
         // nearest ring first; within a ring the floor-plane rule's own layer wins, then the one below
         for (int reach = 1; reach <= GROUND_REACH; reach++) {
-            for (int dLayer : new int[]{0, -1, 1}) {
+            for (int dLayer : upSupported ? new int[]{0, -1, 1} : new int[]{0, -1}) {
                 for (int dx = -reach; dx <= reach; dx++) {
                     for (int dz = -reach; dz <= reach; dz++) {
                         if (Math.max(Math.abs(dx), Math.abs(dz)) == reach
