@@ -41,6 +41,23 @@ public final class SmartCursor {
     }
 
     /**
+     * The unit cell a block face pointing {@code side} belongs to, for a block at {@code bx, bz} blocks from
+     * the anchor on {@code layer}. Usually the block's own cell; but a unit's east and south walls stand on
+     * the plane it shares with the next cell (its local 8 = the neighbour's local 0), so an east or south
+     * face of a block on that plane belongs to the cell west or north of the block's.
+     */
+    public static Cell aimedUnit(int bx, int bz, int layer, UnitSide side) {
+        int x = Math.floorDiv(bx, 8);
+        int z = Math.floorDiv(bz, 8);
+        if (side == UnitSide.EAST && Math.floorMod(bx, 8) == 0) {
+            x--;
+        } else if (side == UnitSide.SOUTH && Math.floorMod(bz, 8) == 0) {
+            z--;
+        }
+        return new Cell(x, layer, z);
+    }
+
+    /**
      * The cell a placing tool takes when aimed at {@code side} of the unit in {@code aimed}.
      * {@code along} is where the crosshair meets that face, 0..8 blocks along it from its west end
      * (north and south faces) or its north end (east and west faces).

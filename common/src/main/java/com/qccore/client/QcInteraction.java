@@ -222,14 +222,16 @@ public final class QcInteraction {
 		BlockPos anchor = QcClientState.anchor;
 		UnitSide side = UnitSide.of(cursor.face());
 		if (side != null) {
-			Cell aimed = Cell.of(cursor.cell(), cursor.layer());
+			BlockPos block = hit.getBlockPos();
+			Cell aimed = SmartCursor.aimedUnit(block.getX() - anchor.getX(), block.getZ() - anchor.getZ(),
+					cursor.layer(), side);
 			if (!around.unit(aimed)) {
 				return plain;
 			}
 			Vec3 at = hit.getLocation();
 			double along = side == UnitSide.NORTH || side == UnitSide.SOUTH
-					? at.x - (anchor.getX() + cursor.cell().x() * 8)
-					: at.z - (anchor.getZ() + cursor.cell().z() * 8);
+					? at.x - (anchor.getX() + aimed.x() * 8)
+					: at.z - (anchor.getZ() + aimed.z() * 8);
 			return SmartCursor.beside(aimed, side, Mth.clamp(along, 0.0, 8.0), around);
 		}
 		if (cursor.face() == Direction.UP) {

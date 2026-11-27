@@ -34,6 +34,20 @@ class SmartCursorTest {
     private static final Cell AIMED = new Cell(0, 1, 0);
 
     @Test
+    void eastAndSouthWallsOnTheSharedPlaneBelongToTheUnitBehindThem() {
+        // unit (0,0) spans blocks 0..8; its east wall stands at x = 8, which floorDiv puts in cell 1
+        assertEquals(new Cell(0, 1, 0), SmartCursor.aimedUnit(8, 3, 1, UnitSide.EAST));
+        assertEquals(new Cell(0, 1, 0), SmartCursor.aimedUnit(3, 8, 1, UnitSide.SOUTH));
+        // its west and north walls (x = 0, z = 0) and blocks inside it are its own
+        assertEquals(new Cell(0, 1, 0), SmartCursor.aimedUnit(0, 3, 1, UnitSide.WEST));
+        assertEquals(new Cell(0, 1, 0), SmartCursor.aimedUnit(3, 0, 1, UnitSide.NORTH));
+        assertEquals(new Cell(0, 1, 0), SmartCursor.aimedUnit(5, 3, 1, UnitSide.EAST));
+        // negative cells: unit (-1,-1) spans -8..0, its east wall is x = 0
+        assertEquals(new Cell(-1, 1, -1), SmartCursor.aimedUnit(0, -3, 1, UnitSide.EAST));
+        assertEquals(new Cell(-1, 1, -1), SmartCursor.aimedUnit(-3, -8, 1, UnitSide.NORTH));
+    }
+
+    @Test
     void theMiddleOfAFaceTakesTheCellAcrossIt() {
         Grid grid = new Grid();
         grid.units.add(AIMED);
