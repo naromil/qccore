@@ -374,10 +374,12 @@ public final class District {
     }
 
     /**
-     * The door steps no outward piece may land on, mapped to who may still put one there: {@code "*"}
-     * for nobody (the walking column of every door, and the whole 3-wide approach of a standing door),
-     * else the name of the door's own building (the sides of its 3-wide approach, so its own door
-     * surround stays while a neighbour's sill or balcony gives way).
+     * The door steps no outward piece may land on: the whole 3-wide approach (a 3..5, y 1..2, one block
+     * out) of every door, planned or standing, mapped to {@code "*"} (nobody). The building's own pieces
+     * give way too (T34; the user's #31 answer: sills and outward pieces never on any door step, old or
+     * new): a door the tweak tool puts on a windowed face kept that face's window sills at a 3 and a 5,
+     * and a 3-wide doorway is all walking column. A door's own portal stands in the wall plane and its
+     * canopy at y 5, so neither is touched.
      */
     static Map<BlockPos, String> doorZones(Map<String, Building> made, Surroundings around) {
         Map<BlockPos, String> zone = new HashMap<>();
@@ -386,12 +388,7 @@ public final class District {
             for (Building.Door d : b.doors) {
                 for (int a = 3; a <= 5; a++) {
                     for (int y = 1; y <= 2; y++) {
-                        BlockPos p = b.out(d.u(), d.side(), a, y, 1);
-                        if (a == 4) {
-                            zone.put(p, "*");
-                        } else {
-                            zone.merge(p, entry.getKey(), (was, now) -> was.equals(now) ? was : "*");
-                        }
+                        zone.put(b.out(d.u(), d.side(), a, y, 1), "*");
                     }
                 }
             }

@@ -374,6 +374,46 @@ class DistrictTest {
         assertEquals(Map.of(new Cell(1, 1, 0), 0b0001), result.doors(), "one door, on the north face asked for");
     }
 
+    /**
+     * T34 (user: "still problems with the exterior deco, standing in the way of the door"): a door the tweak
+     * tool puts on a face the design gave windows keeps its whole 3-wide approach free; the windows' sills
+     * stood at a 3 and a 5 right beside it. Every template, with the design's door and with a tweaked one.
+     */
+    @Test
+    void nothingStandsInADoorsApproach() {
+        int[][] sides = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};
+        for (String template : Templates.names()) {
+            if (template.equals(Templates.LEGACY)) {
+                continue;
+            }
+            for (int variant = 0; variant < 2; variant++) {
+                QcPlan plan = house(template, 2, 1, 2);
+                if (variant == 1) {
+                    plan.setDoor(new Cell(0, 1, 0), UnitSide.WEST, QcPlan.DOOR_HERE);
+                }
+                District.Result result = District.build(plan);
+                assertFalse(result.doors().isEmpty(), template + ": a door");
+                for (Map.Entry<Cell, Integer> e : result.doors().entrySet()) {
+                    Cell c = e.getKey();
+                    for (int s = 0; s < 4; s++) {
+                        if ((e.getValue() & 1 << s) == 0) {
+                            continue;
+                        }
+                        for (int a = 3; a <= 5; a++) {
+                            for (int y = 1; y <= 2; y++) {
+                                int x = c.x() * 8 + (sides[s][0] == 0 ? a : sides[s][0] > 0 ? 9 : -1);
+                                int z = c.z() * 8 + (sides[s][1] == 0 ? a : sides[s][1] > 0 ? 9 : -1);
+                                BlockPos p = new BlockPos(x, c.layer() * 8 + y, z);
+                                assertNull(result.blocks().get(p), template + (variant == 1 ? " (tweaked west door)" : "")
+                                        + ": " + result.blocks().get(p) + " in front of the door of " + c + " at " + p);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     @Test
     void aDoorNeverMovesTheDoorOffThatFace() {
         QcPlan plan = house("house", 2, 1, 2);

@@ -227,10 +227,10 @@ Server/client split:
   the plan (building or road) is written inside a standing building cell's 9x9x9 box, shared planes included
   (`Surroundings.standingBuildings` leaves out cells the plan itself rebuilds); standing road cells join the
   road-floor columns, so outward decoration yields over them below head height as over a planned road; and
-  `District.doorZones` keeps every door step free of outward pieces: the walking column (a 4, y 1..2) of every
-  door for everyone, the 3-wide approach (a 3..5) of a standing door for everyone, and that of a planned door
-  for every building but its own (its own door surround stays). A relief group that touches any of these goes
-  whole.
+  `District.doorZones` keeps every door step free of outward pieces: the whole 3-wide approach (a 3..5, y 1..2,
+  one block out) of every door, standing or planned, for everyone, the door's own building included (T34: a
+  tweak-tool door on a windowed face kept its window sills at a 3/a 5; the portal stays in the wall plane and its
+  canopy at y 5). A relief group that touches any of these goes whole.
 - **New parts join their own building** (T17, user 2026-11-21: "newly built parts are allowed to change previously
   built parts to work with them, because we want them to look like as if they are built at the same time"). This
   narrows the rule above to standing buildings of *another* design. An apply stores with each qckit building cell
