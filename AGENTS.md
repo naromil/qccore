@@ -77,6 +77,15 @@ the original QCSimple-port spec, is no longer in the repo.)
   is chosen by itself where a hall fits it (open side behind on this storey, open side ahead on the next): 3 wide up
   the middle, the first step on the framework in the shared plane, the eighth set into the floor above and leaning on
   the framework ahead. `Building.stairRoom` is the reserved air (lights keep out). Mirrors qckit `building.py`.
+- **Road level changes (T35 picks 4, 5):** `core/plan/RoadStairs` runs in `District` before the roads are laid. A
+  street cell whose neighbour one layer up and one cell ahead is a road (and the cell over it empty) becomes a
+  **stair cell**: a 3-wide straight flight in the side of the 7 with no side street or door approach (lanes 5-7
+  first), first step on the mouth behind, eighth leaning on the upper street's mouth, which opens because the cell
+  over the stair is added to that layer's `joined` set; the other four lanes run on level. A street stacked right
+  over a cell gets a **switchback** (2+2 runs, 4-wide landing, a well in the upper paving) beside a 3-wide level
+  lane. One stair per pair of connected streets; the steps are the road style's optional `flight` role, reported
+  missing only when a plan has a level change; decor keeps out of `RoadStairs.Result.columns`. qckit's road.py
+  has no layers, so this one is QCCore-only for now.
 - **Domain:** a **QC Unit** is a 9x9x9 block cell with a 7x7x7 interior. Units are spaced **8 blocks apart** on every
   axis, so neighbours *share* the boundary plane (local `0` of one unit is local `8` of the next); unit origins
   satisfy `x = 8*dx + anchorX` (same for `y`, `z`) and unit-local `(x, y, z)` lands at `absX = dx*8 + x`,

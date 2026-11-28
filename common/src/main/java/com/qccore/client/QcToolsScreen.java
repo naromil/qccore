@@ -539,7 +539,13 @@ public class QcToolsScreen extends Screen {
 		if (!style.kind().equals(com.qccore.core.qc.Roles.ROAD)) {
 			return java.util.Set.of();
 		}
-		return style.missing();
+		java.util.Set<String> missing = new java.util.LinkedHashSet<>(style.missing());
+		// roles only some plans need (the flight of a level change) come from the compiled plan
+		java.util.Set<String> needed = QcBlockPreview.missing().get(QcClientState.roadStyle);
+		if (needed != null) {
+			missing.addAll(needed);
+		}
+		return missing;
 	}
 
 	/** What the road style still lacks, in plain words: "blocks complete" or "lanes 2, 3 without a block → Blocks…". */

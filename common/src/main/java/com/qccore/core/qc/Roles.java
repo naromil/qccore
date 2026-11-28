@@ -71,6 +71,7 @@ public final class Roles {
         }
         road.add(Role.optional("medallion", "the 3x3 at a bend, tee or crossing"));
         road.add(Role.optional("centre", "the medallion's middle block"));
+        road.add(Role.optional("flight", "stairs where the street climbs to one a layer up (needed only then)").hint("stairs"));
         register(ROAD, road);
         String list = " (a,b,c picks one per prop)";
         register(DECOR, List.of(

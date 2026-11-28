@@ -83,6 +83,12 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
    (beam = frame, wall_upper = wall, ...). Doors face the roads, so lay the roads before or after the
    building, the generator sees them either way. Every unit of a qckit building clears its footprint
    (cell + 2-block shell) when applied.
+
+   **Stairs.** A building climbs a 2+2 dog-leg with a half landing in a corner (a 3-wide lane stays free
+   beside it); a hall with open sides at both ends climbs a 3-wide flight up its middle instead. A street
+   that meets a street one layer up climbs to it by itself: a 3-wide flight when the upper street is one cell
+   ahead (the other lanes run on under it), a switchback beside a level lane when it is stacked right over
+   it. Give the road style a **flight** block (a stair) for that.
 4. **Modifiers** (tools screen): mirror east-west and/or north-south through a mirror cell, and an array
    (copies + a step in cells along x / layer / z). They apply to every shape and to templates.
 5. **Undo/redo** plan edits with **Z** / **Shift+Z** (100 steps). **H** copies the aimed layer one up.

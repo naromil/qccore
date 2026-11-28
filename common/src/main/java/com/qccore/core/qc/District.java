@@ -6,6 +6,7 @@ import com.qccore.core.plan.BuildingSpec;
 import com.qccore.core.plan.Cell;
 import com.qccore.core.plan.QcPlan;
 import com.qccore.core.plan.RoadKit;
+import com.qccore.core.plan.RoadStairs;
 import com.qccore.core.plan.Surroundings;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -180,6 +181,34 @@ public final class District {
         }
         Map<BlockPos, String> roadBlocks = new LinkedHashMap<>();
         Map<Long, Set<Integer>> roadFloor = new HashMap<>();
+        // level changes: where a street meets one a layer up, a road cell climbs to it (T35)
+        Map<Cell, BlockChoice> roadStyles = new LinkedHashMap<>();
+        roadLayers.forEach((layer, cells) -> cells.forEach((pos, style) -> roadStyles.put(Cell.of(pos, layer), style)));
+        Set<Cell> standingBuildings = around.standingBuildings(plan);
+        Set<Cell> standingRoads = around.standingRoads(plan);
+        java.util.function.Function<Integer, Set<Long>> doorColumns = layer -> {
+            Set<Long> cols = new HashSet<>(around.doorOpenings(layer));
+            for (Building b : made.values()) {
+                if (b.groundLayer == layer) {
+                    cols.addAll(b.openings);
+                }
+            }
+            return cols;
+        };
+        RoadStairs.Result stairs = RoadStairs.plan(roadStyles,
+                cell -> !plan.hasUnit(cell) && !standingBuildings.contains(cell) && !standingRoads.contains(cell),
+                doorColumns);
+        notes.addAll(stairs.notes());
+        if (!stairs.missing().isEmpty()) {
+            for (Map.Entry<Cell, BlockChoice> entry : roadStyles.entrySet()) {
+                if (entry.getValue().get("flight") == null) {
+                    String name = plan.roads().get(entry.getKey());
+                    if (name != null && stairsNeed(stairs, plan, name)) {
+                        missing.computeIfAbsent(name, k -> new LinkedHashSet<>()).add("flight");
+                    }
+                }
+            }
+        }
         for (Map.Entry<Integer, Map<UnitPos, BlockChoice>> entry : roadLayers.entrySet()) {
             int layer = entry.getKey();
             Set<Long> openings = new HashSet<>(around.doorOpenings(layer));
@@ -198,7 +227,8 @@ public final class District {
                     }
                 }
             }
-            Set<UnitPos> joined = around.joinedRoads(plan, layer);
+            Set<UnitPos> joined = new HashSet<>(around.joinedRoads(plan, layer));
+            joined.addAll(stairs.joined(layer));
             for (Map.Entry<BlockPos, String> road : RoadKit.build(entry.getValue(), joined, openings, columns).entrySet()) {
                 roadBlocks.put(road.getKey().offset(0, layer * 8, 0), road.getValue());
             }
@@ -206,6 +236,8 @@ public final class District {
                 roadFloor.computeIfAbsent(column, k -> new HashSet<>()).add(layer * 8);
             }
         }
+        roadBlocks.keySet().removeAll(stairs.cleared());
+        roadBlocks.putAll(stairs.blocks());
 
         // standing roads count as road for the yield rules, and standing buildings and doors are kept
         for (Cell cell : around.standingRoads(plan)) {
@@ -319,6 +351,7 @@ public final class District {
                             openings.addAll(b.openings);
                         }
                     }
+                    openings.addAll(stairs.columns(layer));
                     Set<UnitPos> occupied = new HashSet<>();
                     if (plan.units().peekLayer(layer) != null) {
                         occupied.addAll(plan.units().peekLayer(layer).keySet());
@@ -381,6 +414,16 @@ public final class District {
      * and a 3-wide doorway is all walking column. A door's own portal stands in the wall plane and its
      * canopy at y 5, so neither is touched.
      */
+    /** Whether a stair of {@code stairs} is laid in road style {@code name} (so its flight role is needed). */
+    private static boolean stairsNeed(RoadStairs.Result stairs, QcPlan plan, String name) {
+        for (Cell cell : stairs.stairCells()) {
+            if (name.equals(plan.roads().get(cell))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     static Map<BlockPos, String> doorZones(Map<String, Building> made, Surroundings around) {
         Map<BlockPos, String> zone = new HashMap<>();
         for (Map.Entry<String, Building> entry : made.entrySet()) {
