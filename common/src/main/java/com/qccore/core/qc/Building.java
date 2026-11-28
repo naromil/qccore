@@ -101,6 +101,8 @@ public final class Building {
     public final Set<Long> groundThick = new HashSet<>();
     public final List<Door> doors = new ArrayList<>();
     final List<Door> flights = new ArrayList<>();
+    /** Air a flight needs: three blocks over every step and landing, two to walk on before and after (lights keep out). */
+    final Set<BlockPos> stairRoom = new HashSet<>();
     /** Plan columns in front of a door: the road keeps them free of furniture. */
     public final Set<Long> openings = new HashSet<>();
     public final List<String> notes = new ArrayList<>();
@@ -609,7 +611,8 @@ public final class Building {
 
     /**
      * One flight per storey change per connected group, and one more for every group of the storey
-     * above that the first did not reach.
+     * above that the first did not reach. A hall (open sides at both ends) gets a {@link #centreFlight}
+     * through its middle; everywhere else a {@link #dogLeg} stands in a corner against a walled side (T35).
      */
     private void stairs() {
         Set<Door> doorSet = new HashSet<>(doors);
@@ -621,38 +624,18 @@ public final class Building {
             Set<Integer> reached = new HashSet<>();
             List<Unit> order = new ArrayList<>(gid.keySet());
             order.sort(Comparator.comparingInt(Unit::x).thenComparingInt(Unit::z));
-            for (Unit u : order) {
-                Unit v = u.up();
-                if (!units.contains(v) || done.contains(gid.get(u)) && reached.contains(gup.get(v))) {
-                    continue;
-                }
-                Side best = null;
-                int bestRank = Integer.MAX_VALUE;
-                for (Side side : new Side[]{Side.W, Side.N, Side.E, Side.S}) {
-                    if (doorSet.contains(new Door(u, side))) {
+            for (int pass = 0; pass < 2; pass++) {
+                for (Unit u : order) {
+                    Unit v = u.up();
+                    if (!units.contains(v) || done.contains(gid.get(u)) && reached.contains(gup.get(v))) {
                         continue;
                     }
-                    String kl = faceKind(u, side);
-                    String ku = faceKind(v, side);
-                    if (kl.equals("inner") && !partyKind(u, side).equals("wall")) {
-                        continue;
-                    }
-                    if (ku.equals("inner") && !partyKind(v, side).equals("wall")) {
-                        continue;
-                    }
-                    // (kl != blind, side letter): blind faces first, then E < N < S < W
-                    int rank = (kl.equals("blind") ? 0 : 10) + "ENSW".indexOf(side.name());
-                    if (rank < bestRank) {
-                        bestRank = rank;
-                        best = side;
+                    boolean built = pass == 0 ? centreFlight(u) : dogLeg(u, doorSet);
+                    if (built) {
+                        done.add(gid.get(u));
+                        reached.add(gup.get(v));
                     }
                 }
-                if (best == null) {
-                    continue;
-                }
-                flight(u, best);
-                done.add(gid.get(u));
-                reached.add(gup.get(v));
             }
             int groups = new HashSet<>(gid.values()).size();
             if (done.size() < groups) {
@@ -661,27 +644,172 @@ public final class Building {
         }
     }
 
-    /** Seven steps up the inside of a side, then an eighth set into the floor plane, turning into the room. */
-    private void flight(Unit u, Side side) {
-        flights.add(new Door(u, side));
-        Side rise = side == Side.N || side == Side.S ? Side.W : Side.N;
+    /**
+     * The default flight (T35 pick 2): a dog-leg of two 2-wide runs with a half landing, in a corner
+     * against a walled side. Run one climbs three steps along the wall (depth 1-2), a 2x4 landing turns,
+     * run two climbs three more back (depth 3-4) and arrives on the floor above; depth 5-7 stays a
+     * 3-wide lane through the unit. Two blocks free before the first step and after the last, three
+     * over every step; a stack of them is a stair tower. Sides: blind faces first, then E < N < S < W.
+     */
+    private boolean dogLeg(Unit u, Set<Door> doorSet) {
+        Unit v = u.up();
+        Side best = null;
+        int bestRank = Integer.MAX_VALUE;
+        for (Side side : new Side[]{Side.W, Side.N, Side.E, Side.S}) {
+            if (doorSet.contains(new Door(u, side))) {
+                continue;
+            }
+            String kl = faceKind(u, side);
+            String ku = faceKind(v, side);
+            if (kl.equals("inner") && !partyKind(u, side).equals("wall")) {
+                continue;
+            }
+            if (ku.equals("inner") && !partyKind(v, side).equals("wall")) {
+                continue;
+            }
+            int rank = (kl.equals("blind") ? 0 : 10) + "ENSW".indexOf(side.name());
+            if (rank < bestRank) {
+                bestRank = rank;
+                best = side;
+            }
+        }
+        if (best == null) {
+            return false;
+        }
+        flights.add(new Door(u, best));
+        // along the wall: a = 1..7; the landing goes to the end whose cross face is walled (a corner), E/S on a tie
+        Side lo = best == Side.N || best == Side.S ? Side.W : Side.N;
+        Side hi = lo.opp();
+        boolean flip = walled(u, lo) && !walled(u, hi);
+        Side land = flip ? lo : hi;
+        Side foot = land.opp();
         String st = m.get("flight");
-        for (int i = 1; i <= 7; i++) {
-            int a = 8 - i;
-            set(inside(u, side, a, i, 1), BlockStr.stair(st, rise));
-            for (int h = 1; h <= 2; h++) {
-                if (i + h <= 9) {
-                    blocks.remove(inside(u, side, a, i + h, 1));
+        String floor = m.get("floor");
+        for (int i = 1; i <= 3; i++) {
+            int a = along(flip, 2 + i);
+            for (int d = 1; d <= 2; d++) {
+                set(inside(u, best, a, i, d), BlockStr.stair(st, land));
+                if (i >= 2) {
+                    set(inside(u, best, a, i - 1, d), BlockStr.stair(st, foot, "top", "straight"));
+                }
+                if (i == 3) {
+                    set(inside(u, best, a, 1, d), floor);
+                }
+                room(u, best, a, i, d);
+            }
+        }
+        for (int a0 = 6; a0 <= 7; a0++) {
+            for (int d = 1; d <= 4; d++) {
+                set(inside(u, best, along(flip, a0), 4, d), floor);
+                room(u, best, along(flip, a0), 4, d);
+            }
+        }
+        for (int i = 5; i <= 7; i++) {
+            int a = along(flip, 10 - i);
+            for (int d = 3; d <= 4; d++) {
+                set(inside(u, best, a, i, d), BlockStr.stair(st, foot));
+                set(inside(u, best, a, i - 1, d), BlockStr.stair(st, land, "top", "straight"));
+                room(u, best, a, i, d);
+            }
+        }
+        for (int a0 = 1; a0 <= 2; a0++) {
+            for (int d = 1; d <= 4; d++) {
+                int y0 = d <= 2 ? 1 : 9;
+                for (int y = y0; y < y0 + 3; y++) {
+                    stairRoom.add(inside(u, best, along(flip, a0), y, d));
                 }
             }
         }
-        set(inside(u, side, 1, 8, 2), BlockStr.stair(st, side.opp()));
-        for (int a = 1; a <= 3; a++) {
-            blocks.remove(inside(u, side, a, 8, 1));
+        return true;
+    }
+
+    /** {@code a} measured from the low end, or from the high end when the dog-leg is mirrored. */
+    private static int along(boolean flip, int a) {
+        return flip ? 8 - a : a;
+    }
+
+    /** Whether a side of a unit is a wall (anything but an open or gated side to another unit of the building). */
+    private boolean walled(Unit u, Side side) {
+        return !faceKind(u, side).equals("inner") || partyKind(u, side).equals("wall");
+    }
+
+    /** Clears and reserves the three blocks over a step or landing block (the floor above included). */
+    private void room(Unit u, Side side, int a, int y, int d) {
+        for (int h = 1; h <= 3; h++) {
+            BlockPos p = inside(u, side, a, y + h, d);
+            blocks.remove(p);
+            stairRoom.add(p);
         }
-        for (int h = 9; h <= 10; h++) {
-            blocks.remove(inside(u, side, 1, h, 2));
+    }
+
+    /**
+     * A hall's flight (T35 pick 3): eight 3-wide steps up the middle of a unit, 2-wide aisles both sides.
+     * The first step sits on the framework in the open side behind (the shared plane), the eighth is set
+     * into the floor above and leans on the framework of the open side ahead, so it starts and ends with
+     * two free blocks in the neighbouring units instead of against a wall. Needs the side behind open to
+     * a unit of this storey and the side ahead open to a unit of the storey above; otherwise no.
+     */
+    private boolean centreFlight(Unit u) {
+        Unit v = u.up();
+        for (Side d : new Side[]{Side.E, Side.S, Side.W, Side.N}) {
+            Unit behind = nb(u, d.opp());
+            Unit ahead = nb(v, d);
+            if (behind == null || ahead == null || !partyKind(u, d.opp()).equals("open")
+                    || !partyKind(v, d).equals("open")) {
+                continue;
+            }
+            boolean free = true;
+            for (int c = 3; c <= 5 && free; c++) {
+                for (int i = 1; i <= 8 && free; i++) {
+                    free = i == 8 || !blocks.containsKey(hall(u, d, i - 1, i, c));
+                }
+                for (int along = -2; along <= -1 && free; along++) {
+                    for (int y = 1; y <= 3 && free; y++) {
+                        free = !blocks.containsKey(hall(u, d, along, y, c));
+                    }
+                }
+            }
+            if (!free) {
+                continue;
+            }
+            flights.add(new Door(u, d));
+            String st = m.get("flight");
+            for (int c = 3; c <= 5; c++) {
+                for (int i = 1; i <= 8; i++) {
+                    set(hall(u, d, i - 1, i, c), BlockStr.stair(st, d));
+                    if (i >= 2) {
+                        set(hall(u, d, i - 1, i - 1, c), BlockStr.stair(st, d.opp(), "top", "straight"));
+                    }
+                    for (int h = 1; h <= 3; h++) {
+                        BlockPos p = hall(u, d, i - 1, i + h, c);
+                        blocks.remove(p);
+                        stairRoom.add(p);
+                    }
+                }
+                for (int along = -2; along <= -1; along++) {
+                    for (int y = 1; y <= 3; y++) {
+                        stairRoom.add(hall(u, d, along, y, c));
+                    }
+                }
+                for (int along = 8; along <= 9; along++) {
+                    for (int y = 9; y <= 11; y++) {
+                        stairRoom.add(hall(u, d, along, y, c));
+                    }
+                }
+            }
+            return true;
         }
+        return false;
+    }
+
+    /** Unit-local position measured {@code along} from the plane behind toward {@code d}, {@code c} across it. */
+    private BlockPos hall(Unit u, Side d, int along, int y, int c) {
+        return switch (d) {
+            case E -> at(u, along, y, c);
+            case W -> at(u, 8 - along, y, c);
+            case S -> at(u, c, y, along);
+            case N -> at(u, c, y, 8 - along);
+        };
     }
 
     private void lights(Unit u) {
@@ -706,12 +834,12 @@ public final class Building {
             String lb = BlockStr.base(light);
             if (lb.endsWith("wall_lantern") || lb.endsWith("wall_torch")) {
                 BlockPos p = inside(u, side, 4, 7, 1);
-                if (!blocks.containsKey(p)) {
+                if (!blocks.containsKey(p) && !stairRoom.contains(p)) {
                     set(p, BlockStr.wallLight(light, side.opp()));
                 }
             } else if (lb.equals("minecraft:lantern")) {
                 BlockPos p = inside(u, side, 4, 7, 1);
-                if (!blocks.containsKey(p)) {
+                if (!blocks.containsKey(p) && !stairRoom.contains(p)) {
                     set(p, BlockStr.LANTERN_HANG);
                 }
             } else if (pieceFaces.contains(new Door(u, side))) {
@@ -743,7 +871,7 @@ public final class Building {
         }
         if (walled < 2 || lights.equals("centre")) {
             BlockPos p = at(u, 4, 7, 4);
-            if (!blocks.containsKey(p)) {
+            if (!blocks.containsKey(p) && !stairRoom.contains(p)) {
                 String h = m.get("hang");
                 set(p, h != null && BlockStr.base(h).equals("minecraft:lantern") ? BlockStr.LANTERN_HANG : h);
             }

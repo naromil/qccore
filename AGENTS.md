@@ -70,6 +70,13 @@ the original QCSimple-port spec, is no longer in the repo.)
   are a registry). The ground storey of a building is its lowest layer; a column whose lowest unit stands higher is a
   span. qckit's probe.py (render probes) is not ported; Java's random means decor is deterministic but not qckit's
   exact arrangement.
+- **Stairs (T35, the user's rules):** flights are 2 wide at least, may take a unit but leave a walkable
+  pass-through beside them, have three free blocks over every step and two free blocks before the first step and
+  after the last (never ending against a wall). `Building.dogLeg` is the default (a 2+2 dog-leg with a half landing
+  in a corner against a walled side, a 3-wide lane left through; stacks into a stair tower); `Building.centreFlight`
+  is chosen by itself where a hall fits it (open side behind on this storey, open side ahead on the next): 3 wide up
+  the middle, the first step on the framework in the shared plane, the eighth set into the floor above and leaning on
+  the framework ahead. `Building.stairRoom` is the reserved air (lights keep out). Mirrors qckit `building.py`.
 - **Domain:** a **QC Unit** is a 9x9x9 block cell with a 7x7x7 interior. Units are spaced **8 blocks apart** on every
   axis, so neighbours *share* the boundary plane (local `0` of one unit is local `8` of the next); unit origins
   satisfy `x = 8*dx + anchorX` (same for `y`, `z`) and unit-local `(x, y, z)` lands at `absX = dx*8 + x`,
