@@ -84,7 +84,8 @@ the original QCSimple-port spec, is no longer in the repo.)
   (ties keep the straight cell; never onto a unit, road or door front); on the ground the layer of the nearest
   unit within 2 cells on the same or the layer below (the layer above only when the aimed cell holds a unit, so
   nothing floats in mid-air, T31); standing door fronts and other buildings' planned door fronts are avoided.
-  Shift + RMB with a placing tool is that exact-cell override, not the single-wall click.
+  Shift + RMB with a placing tool is that exact-cell override. There are no Shift/Ctrl wall or gate clicks
+  (T36): partitions are set with the Tweak tool.
 - **Legacy nine components** (QCSimple, `qcsimple` template only) in `core/palette/`, fixed order `frameworkBlock, rowBlock, columnBlock, wallBlock,
   floorBlock` (block ids, seeded by `Defaults.applyTo` with `polished_deepslate`, `chiseled_deepslate`, `spruce_log`,
   `deepslate_tiles`, `spruce_planks`) then `innerWall, gate, outerWall` (all `deepslate_bricks`) and `innerColumn`
@@ -518,7 +519,7 @@ packet back), after Y it applied 1 unit / 750 blocks through the chunked plan pa
 not mine it, RMB then LMB on an empty cell planned and erased a unit. Forge undo, align, the screens and templates
 were not exercised in a client. The jars were checked to carry SRG (`m_…`) resp. intermediary (`method_…`) names.
 
-**Manual checklist (human required):** wall and gate plates on a shared face (blue, then green with Ctrl), a second
+**Manual checklist (human required):** wall and gate plates on a shared face set with the Tweak tool, a second
 layer placed 8 blocks up, `H` duplicating a layer, `Y` re-anchoring,
 `O` toggling the overlay, and the config screen's `Choose…` / `Load layout…` flows including a size-mismatch
 rejection.

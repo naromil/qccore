@@ -48,9 +48,6 @@ import net.minecraft.world.phys.Vec3;
  * edit is a step of {@link QcClientState#history}.
  */
 public final class QcInteraction {
-	private static final String FACE_MESSAGE = "QC: look at a side face to place walls";
-	private static final String PAIR_MESSAGE = "QC: both QC units must exist to attach a wall";
-	private static final String GATE_MESSAGE = "QC: no wall on this face; Shift+RMB sets one, then Ctrl+RMB makes it a gate";
 	private static final String WORLD_MESSAGE = "QC: editor reset (changed dimension)";
 
 	/** How close a reported unit has to be before the anchor adopts its lattice. */
@@ -333,13 +330,8 @@ public final class QcInteraction {
 		if (cursor == null) {
 			return;
 		}
-		boolean control = modifierDown(client, GLFW.GLFW_KEY_LEFT_CONTROL, GLFW.GLFW_KEY_RIGHT_CONTROL);
-		boolean shift = modifierDown(client, GLFW.GLFW_KEY_LEFT_SHIFT, GLFW.GLFW_KEY_RIGHT_SHIFT);
-		// Shift + RMB with a building or template tool places on exactly the aimed cell (T29) instead of setting a wall
-		if (control || shift && !(useKey && isPlacingTool(QcClientState.tool))) {
-			edit(() -> toggleWall(cursor, useKey, control));
-			return;
-		}
+		// T36: no Shift/Ctrl wall or gate clicks any more (partitions are set with the Tweak tool); Shift only
+		// makes a placing tool take exactly the aimed cell, which target() reads
 		if (!useKey) {
 			if (!QcClientState.points.isEmpty()) {
 				QcClientState.points.clear();
@@ -874,42 +866,6 @@ public final class QcInteraction {
 		QcClientState.say("QC: applying plan (" + QcClientState.plan.summary() + ")...");
 	}
 
-	private static boolean toggleWall(Cursor cursor, boolean wallState, boolean gate) {
-		Direction face = cursor.face();
-		UnitSide side = face == null ? null : UnitSide.of(face);
-		if (side == null) {
-			QcClientState.say(FACE_MESSAGE);
-			return false;
-		}
-		Map<UnitPos, QcUnit> layer = QcClientState.plan.units().peekLayer(cursor.layer());
-		QcUnit center = layer == null ? null : layer.get(cursor.cell());
-		QcUnit neighbour = layer == null ? null : layer.get(neighbour(cursor.cell(), side));
-		if (center == null || neighbour == null) {
-			QcClientState.say(PAIR_MESSAGE);
-			return false;
-		}
-		if (gate) {
-			if (wallState && !(hasWallFlag(center, side) && hasWallFlag(neighbour, opposite(side)))) {
-				// a gate is a doorway in a wall: without one there is nothing to open, so say so instead of nothing
-				QcClientState.say(GATE_MESSAGE);
-				return false;
-			}
-			if (hasWallFlag(center, side) && hasWallFlag(neighbour, opposite(side))
-					&& (isGateFlag(center, side) != wallState || isGateFlag(neighbour, opposite(side)) != wallState)) {
-				setGateFlag(center, side, wallState);
-				setGateFlag(neighbour, opposite(side), wallState);
-				return true;
-			}
-			return false;
-		}
-		if (hasWallFlag(center, side) == wallState && hasWallFlag(neighbour, opposite(side)) == wallState) {
-			return false;
-		}
-		setWallFlag(center, side, wallState);
-		setWallFlag(neighbour, opposite(side), wallState);
-		return true;
-	}
-
 	private static boolean isPlacingTool(QcTool tool) {
 		return tool == QcTool.UNITS || tool == QcTool.TEMPLATE;
 	}
@@ -933,14 +889,6 @@ public final class QcInteraction {
 
 	static boolean isGateFlag(QcUnit unit, UnitSide side) {
 		return Flags.isGate(unit, side);
-	}
-
-	static void setWallFlag(QcUnit unit, UnitSide side, boolean value) {
-		Flags.setWall(unit, side, value);
-	}
-
-	static void setGateFlag(QcUnit unit, UnitSide side, boolean value) {
-		Flags.setGate(unit, side, value);
 	}
 
 	/**

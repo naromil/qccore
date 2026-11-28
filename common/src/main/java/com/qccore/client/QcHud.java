@@ -141,9 +141,7 @@ public final class QcHud {
 		String[][] controls = {
 				{use, "use tool / next point"},
 				{attack, "erase / cancel shape"},
-				{"Shift+" + use, "exact cell (placing) · else wall"},
-				{"Ctrl+" + use, "gate on a shared face"},
-				{"Shift/Ctrl+" + attack, "clear wall / gate"},
+				{"Shift+" + use, "exact cell (building, template)"},
 				{key(QcKeys.tools), "planning tools"},
 				{key(QcKeys.tool) + " / " + key(QcKeys.shape), "cycle tool / shape"},
 				{key(QcKeys.undo), "undo edit (Shift: redo)"},

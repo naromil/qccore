@@ -61,9 +61,8 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
    the same or one lower (never one higher, which would leave the new unit floating over the ground); and they never pick a cell in front of a door over one that isn't. **Hold Shift**
    for exactly the aimed cell.
 
-   **LMB** cancels a shape in progress, otherwise erases the aimed cell. **Ctrl + RMB** sets a gate,
-   **Shift/Ctrl + LMB** clear a wall/gate on the aimed face; **Shift + RMB** sets a wall with the other
-   tools (with building and template it is the exact-cell placement above).
+   **LMB** cancels a shape in progress, otherwise erases the aimed cell. Walls, gates and open sides
+   between units are set with the **Tweak** tool (there are no Shift/Ctrl wall clicks).
 3. **Buildings and blocks** (tools screen, Building panel): the top row says which building the building tool
    adds to ("adding to: house B · 6 units", or "next unit: a new house"); **‹ ›** steps through the plan's
    buildings, **New** makes the next unit start a new one, **Pick aimed** takes the building of the aimed unit.
