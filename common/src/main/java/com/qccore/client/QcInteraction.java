@@ -627,12 +627,22 @@ public final class QcInteraction {
 	 */
 	@Nullable
 	public static Cell aimedPlanUnit(Minecraft client) {
+		return aimedPlanCell(client, cell -> QcClientState.plan.building(cell) != null);
+	}
+
+	/** The first planned road cell along the crosshair ray, or {@code null} (same ray as {@link #aimedPlanUnit}). */
+	@Nullable
+	public static Cell aimedPlanRoad(Minecraft client) {
+		return aimedPlanCell(client, cell -> QcClientState.plan.roads().containsKey(cell));
+	}
+
+	@Nullable
+	private static Cell aimedPlanCell(Minecraft client, java.util.function.Predicate<Cell> wanted) {
 		Entity camera = client.getCameraEntity();
 		BlockPos anchor = QcClientState.anchor;
 		if (!QcClientState.active || camera == null || anchor == null || client.level == null) {
 			return null;
 		}
-		QcPlan plan = QcClientState.plan;
 		Vec3 eye = camera.getEyePosition(1.0F);
 		Vec3 look = camera.getViewVector(1.0F);
 		double range = PLAN_RAY_RANGE;
@@ -657,7 +667,7 @@ public final class QcInteraction {
 				for (int dy = 0; dy <= oy; dy++) {
 					for (int dz = 0; dz <= oz; dz++) {
 						Cell cell = new Cell(cx - dx, cy - dy, cz - dz);
-						if (plan.building(cell) != null) {
+						if (wanted.test(cell)) {
 							return cell;
 						}
 					}

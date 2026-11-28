@@ -63,11 +63,16 @@ QCSimple's nine components (column, row, inner column...) are outdated rules and
 
    **LMB** cancels a shape in progress, otherwise erases the aimed cell. Walls, gates and open sides
    between units are set with the **Tweak** tool (there are no Shift/Ctrl wall clicks).
-3. **Buildings and blocks** (tools screen, Building panel): the top row says which building the building tool
+3. **Buildings and blocks** (tools screen): the top-right card holds the settings of the current tool and is
+   titled after it. **Building** (building, assign and erase tools): the top row says which building the building tool
    adds to ("adding to: house B · 6 units", or "next unit: a new house"); **‹ ›** steps through the plan's
    buildings, **New** makes the next unit start a new one, **Pick aimed** takes the building of the aimed unit.
-   The line under the buttons says whether the active style still lacks blocks. The road tool's style sits in
-   the Tool panel's title strip while the road tool is active. **Design…** sets the
+   The line under the buttons says whether the active style still lacks blocks. **Road**: "‹ street · 12 cells ›"
+   steps through the plan's road styles, **New** starts another ("street 2"), **Blocks…** opens the chooser on
+   that road style, **Pick aimed** takes the style of the aimed road, and the status line names the lanes
+   still without a block. **Clear terrain**: the clear margin and the ground block. **Tweak**: the partition
+   (walls, gates, open, design) a shape of two or more units sets inside it. **Template**: **Templates…**,
+   the turn, and the template being stamped. **Design…** sets the
    template and its overrides: roof (hip, gable, gambrel, mansard, flat, garden, none; rise and ridge),
    facades per storey (a mask or a qckit piece such as framed, arched, twin, bay, balcony, timber, arcade;
    `bay|balcony` is a rhythm along the run), run ends and blind faces, piers (normal, dense, 2x2, thick),

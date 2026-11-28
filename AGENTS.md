@@ -30,7 +30,9 @@ the original QCSimple-port spec, is no longer in the repo.)
 
 - **Purpose:** crosshair editing of qckit buildings and roads. There is no 2D editor screen; the GUI is
   the IO/config screens (`QcConfigScreen` = lattice + layouts + legacy palette, `QcFileBrowserScreen`, `QcSaveScreen`)
-  plus the planning screens (`QcToolsScreen` hub on B with the Building panel, `QcDesignScreen`
+  plus the planning screens (`QcToolsScreen` hub on B whose top-right card is the current tool's settings, T33:
+  Building / Road / Clear terrain / Tweak / Template from `QcToolCards.Card.of(tool)`, rebuilt when the tool changes; feedback
+  from its chips goes on the card, since the HUD that `say()` writes to is hidden behind a screen; `QcDesignScreen`
   template/roof/facades/piers/partition/doors/lights of the active building, `QcBlockChooserScreen` styles x roles with
   kits, batch presets (`core/qc/Presets`) and a live 3D sample of the style (hovering a role row lights that role's blocks), `QcBlockPickerScreen` searchable block grid, `QcTemplateScreen` with a
   3D preview in default blocks; both previews are `QcSceneView`). All of them and `QcHud` share the flat

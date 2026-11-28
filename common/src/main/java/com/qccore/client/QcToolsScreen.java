@@ -17,10 +17,10 @@ import org.lwjgl.glfw.GLFW;
 
 /**
  * The hub of the planning tools (key B), in the spirit of Effortless Building's radial menu: the
- * tool and the build shape (with the road style while the road tool is active), the building the building
- * tool adds to (its design and blocks), the mirror and array
- * modifiers, terrain clearing settings, the plan's undo/redo, and the two ways to finish a plan:
- * apply it to the world or export it as a structure {@code .nbt}.
+ * tool and the build shape, the settings card of the current tool (top right, titled after the tool, T33:
+ * Building for the building, assign and erase tools, Road, Clear terrain, Tweak, Template), the mirror and
+ * array modifiers, the plan's undo/redo, and the two ways to finish a plan: apply it to the world or export
+ * it as a structure {@code .nbt}.
  *
  * <p>Two columns of panels, every choice visible at once as a chip that lights up when selected,
  * numbers as {@link Stepper}s, a tooltip on every control. Keys while no text field is focused:
@@ -34,20 +34,23 @@ public class QcToolsScreen extends Screen {
 	private static final int TILE = 18;
 	private static final int CONTENT_HEIGHT = 199;
 
-	private static final int BUILDING_HEIGHT = 65;
+	private static final int CARD_HEIGHT = 65;
 
 	private EditBox ground;
-	private Chip roadStyle;
+	private QcToolCards.Card card;
 	private int margin;
 	private Cell cursorCell;
 	/** The planned unit under the crosshair when the screen opened, ghosts included (for Pick aimed). */
 	private Cell aimedUnit;
+	/** The planned road cell under the crosshair when the screen opened (for the Road card's Pick aimed). */
+	private Cell aimedRoad;
+	/** A word the Road card shows on its status line after a click (the HUD is hidden behind the screen). */
+	private String roadNote;
 	private int left;
 	private int right;
 	private int top;
 	private int shapeTop;
 	private int planTop;
-	private int terrainTop;
 	private int modTop;
 	private int libTop;
 
@@ -67,16 +70,18 @@ public class QcToolsScreen extends Screen {
 	protected void init() {
 		// a re-init (window resize) rebuilds the ground field: keep what was typed into it
 		commit();
+		this.ground = null;
+		this.card = QcToolCards.Card.of(QcClientState.tool);
 		this.cursorCell = this.minecraft == null ? null : QcInteraction.target(this.minecraft);
 		this.aimedUnit = this.minecraft == null ? null : QcInteraction.aimedPlanUnit(this.minecraft);
+		this.aimedRoad = this.minecraft == null ? null : QcInteraction.aimedPlanRoad(this.minecraft);
 		this.margin = QcClientState.plan.clearMargin;
 		this.left = this.width / 2 - COLUMN - GAP / 2;
 		this.right = this.width / 2 + GAP / 2;
 		this.top = 17 + Math.max(0, (this.height - 22 - 17 - CONTENT_HEIGHT) / 2);
 		this.shapeTop = this.top + 37 + 3;
 		this.planTop = this.shapeTop + 48 + 3;
-		this.terrainTop = this.planTop + 48 + 3;
-		this.modTop = this.top + BUILDING_HEIGHT + 3;
+		this.modTop = this.top + CARD_HEIGHT + 3;
 		this.libTop = this.modTop + 80 + 3;
 		int inner = COLUMN - 8;
 		int half = (inner - 2) / 2;
@@ -89,19 +94,9 @@ public class QcToolsScreen extends Screen {
 		int tileStep = (inner - TILE) / (tools.length - 1);
 		for (int i = 0; i < tools.length; i++) {
 			QcTool tool = tools[i];
-			this.addRenderableWidget(new Chip(this.left + 4 + i * tileStep, y, TILE, TILE, QcUi.shortName(tool), () -> {
-				QcClientState.tool = tool;
-				QcClientState.points.clear();
-			}).selected(() -> QcClientState.tool == tool).accent(QcUi.color(tool))
+			this.addRenderableWidget(new Chip(this.left + 4 + i * tileStep, y, TILE, TILE, QcUi.shortName(tool), () -> setTool(tool)).selected(() -> QcClientState.tool == tool).accent(QcUi.color(tool))
 					.icon(() -> QcUi.icon(tool), true).tip(QcUi.describe(tool) + "\nkey " + (i + 1)));
 		}
-
-		// the road style belongs to the road tool: it sits in the Tool panel's title strip while that tool is active
-		int roadW = 104;
-		this.roadStyle = this.addRenderableWidget(new Chip(this.left + COLUMN - roadW - 2, this.top + 1, roadW, QcUi.HEADER_HEIGHT - 1,
-				"", this::stepRoadStyle).label(() -> "road style: " + QcClientState.roadStyle + "  ›").accent(QcUi.color(QcTool.ROAD))
-				.tip("The style the road tool lays; click for the next road style of the plan"));
-		this.roadStyle.visible = QcClientState.tool == QcTool.ROAD;
 
 		// 2. Shapes
 		y = this.shapeTop + body;
@@ -139,57 +134,14 @@ public class QcToolsScreen extends Screen {
 			onClose();
 		}).tip("Re-apply what the last world undo removed (/qc redo)"));
 
-		// 4. Terrain
-		y = this.terrainTop + body;
-		this.addRenderableWidget(new Stepper(this.left + 4 + inner - 48, y, 48, CHIP_H, "clear margin",
-				0, QcPlan.MAX_CLEAR_MARGIN, () -> this.margin, value -> this.margin = value)
-				.tip("Blocks cleared around every planned cell (0-" + QcPlan.MAX_CLEAR_MARGIN + ")"));
-		y += ROW;
-		this.ground = new EditBox(this.font, this.left + 45, y, inner - 41, CHIP_H, Component.literal("ground"));
-		this.ground.setMaxLength(128);
-		this.ground.setValue(QcClientState.plan.ground);
-		this.ground.setHint(Component.literal("block id, e.g. grass_block").withStyle(st -> st.withColor(0x667080)));
-		this.ground.setTooltip(QcUi.tip("Fills the floor plane of cleared cells; leave empty for none"));
-		this.addRenderableWidget(this.ground);
-
-		// 5. Building: which building the building tool adds to (in words), its design and blocks
-		y = this.top + body;
-		int arrow = 11;
-		int newW = 26;
-		int labelW = inner - 2 * arrow - newW - 6;
-		this.addRenderableWidget(new Chip(this.right + 4, y, arrow, CHIP_H, "‹", () -> stepBuilding(-1))
-				.tip("Previous building of the plan"));
-		this.addRenderableWidget(new Chip(this.right + 6 + arrow, y, labelW, CHIP_H, "", () -> stepBuilding(1))
-				.label(QcToolsScreen::buildingLabel).accent(QcUi.color(QcTool.UNITS))
-				.tip("The building the building tool adds to; click or ‹ › to step through the plan's buildings"));
-		this.addRenderableWidget(new Chip(this.right + 8 + arrow + labelW, y, arrow, CHIP_H, "›", () -> stepBuilding(1))
-				.tip("Next building of the plan"));
-		this.addRenderableWidget(new Chip(this.right + 4 + inner - newW, y, newW, CHIP_H, "New", () -> {
-			QcClientState.building = null;
-			QcClientState.tool = QcTool.UNITS;
-		}).selected(() -> QcClientState.activeBuilding() == null)
-				.tip("The next unit starts a new building with the current design"));
-		y += ROW;
-		this.addRenderableWidget(new Chip(this.right + 4, y, third, CHIP_H, "Design…", () -> {
-			commit();
-			this.minecraft.setScreen(new QcDesignScreen(this));
-		}).tip("Template, roof, facades, piers and partitions of the active building"));
-		this.addRenderableWidget(new Chip(this.right + 6 + third, y, third, CHIP_H, "Blocks…", () -> {
-			commit();
-			this.minecraft.setScreen(new QcBlockChooserScreen(this));
-		}).accent(QcUi.OK).tip("Choose the block of every role of every style, and save or load kits"));
-		this.addRenderableWidget(new Chip(this.right + 8 + 2 * third, y, third, CHIP_H, "Pick aimed", () -> {
-			String key = this.aimedUnit == null ? null : QcClientState.plan.building(this.aimedUnit);
-			if (key != null) {
-				QcClientState.building = key;
-				QcClientState.design = QcClientState.plan.buildings().get(key).copy();
-			}
-		}).selected(() -> this.aimedUnit != null
-				&& QcClientState.activeBuilding() != null
-				&& java.util.Objects.equals(QcClientState.building, QcClientState.plan.building(this.aimedUnit)))
-				.tip(this.aimedUnit == null ? "Aim at a planned unit before opening this screen"
-						: "Make building " + QcClientState.plan.building(this.aimedUnit)
-								+ " (the aimed unit's) the active one"));
+		// 4. The current tool's settings card (T33)
+		switch (this.card) {
+			case BUILDING -> initBuildingCard(inner, third);
+			case ROAD -> initRoadCard(inner, third);
+			case CLEAR -> initClearCard(inner);
+			case TWEAK -> initTweakCard(inner);
+			case TEMPLATE -> initTemplateCard(inner);
+		}
 
 		// 6. Modifiers
 		Modifiers modifiers = QcClientState.modifiers;
@@ -253,6 +205,139 @@ public class QcToolsScreen extends Screen {
 		}).accent(QcUi.APPLY).primary().tip("Build the plan in the world (K or Enter); creative only, undoable"));
 	}
 
+	/** Building card (building, assign and erase tools): the building the building tool adds to, its design and blocks. */
+	private void initBuildingCard(int inner, int third) {
+		int y = this.top + QcUi.HEADER_HEIGHT + 3;
+		int arrow = 11;
+		int newW = 26;
+		int labelW = inner - 2 * arrow - newW - 6;
+		this.addRenderableWidget(new Chip(this.right + 4, y, arrow, CHIP_H, "‹", () -> stepBuilding(-1))
+				.tip("Previous building of the plan"));
+		this.addRenderableWidget(new Chip(this.right + 6 + arrow, y, labelW, CHIP_H, "", () -> stepBuilding(1))
+				.label(QcToolsScreen::buildingLabel).accent(QcUi.color(QcTool.UNITS))
+				.tip("The building the building tool adds to; click or ‹ › to step through the plan's buildings"));
+		this.addRenderableWidget(new Chip(this.right + 8 + arrow + labelW, y, arrow, CHIP_H, "›", () -> stepBuilding(1))
+				.tip("Next building of the plan"));
+		this.addRenderableWidget(new Chip(this.right + 4 + inner - newW, y, newW, CHIP_H, "New", () -> {
+			QcClientState.building = null;
+			QcClientState.tool = QcTool.UNITS;
+		}).selected(() -> QcClientState.activeBuilding() == null)
+				.tip("The next unit starts a new building with the current design"));
+		y += ROW;
+		this.addRenderableWidget(new Chip(this.right + 4, y, third, CHIP_H, "Design…", () -> {
+			commit();
+			this.minecraft.setScreen(new QcDesignScreen(this));
+		}).tip("Template, roof, facades, piers and partitions of the active building"));
+		this.addRenderableWidget(new Chip(this.right + 6 + third, y, third, CHIP_H, "Blocks…", () -> {
+			commit();
+			this.minecraft.setScreen(new QcBlockChooserScreen(this));
+		}).accent(QcUi.OK).tip("Choose the block of every role of every style, and save or load kits"));
+		this.addRenderableWidget(new Chip(this.right + 8 + 2 * third, y, third, CHIP_H, "Pick aimed", () -> {
+			String key = this.aimedUnit == null ? null : QcClientState.plan.building(this.aimedUnit);
+			if (key != null) {
+				QcClientState.building = key;
+				QcClientState.design = QcClientState.plan.buildings().get(key).copy();
+			}
+		}).selected(() -> this.aimedUnit != null
+				&& QcClientState.activeBuilding() != null
+				&& java.util.Objects.equals(QcClientState.building, QcClientState.plan.building(this.aimedUnit)))
+				.tip(this.aimedUnit == null ? "Aim at a planned unit before opening this screen"
+						: "Make building " + QcClientState.plan.building(this.aimedUnit)
+								+ " (the aimed unit's) the active one"));
+	}
+
+	/**
+	 * Road card: the road style the road tool lays (‹ name · N cells › New), its blocks, the style of the
+	 * aimed road, and on the status line what the style still lacks.
+	 */
+	private void initRoadCard(int inner, int third) {
+		int y = this.top + QcUi.HEADER_HEIGHT + 3;
+		int arrow = 11;
+		int newW = 26;
+		int labelW = inner - 2 * arrow - newW - 6;
+		this.addRenderableWidget(new Chip(this.right + 4, y, arrow, CHIP_H, "‹", () -> stepRoadStyle(-1))
+				.tip("Previous road style of the plan"));
+		this.addRenderableWidget(new Chip(this.right + 6 + arrow, y, labelW, CHIP_H, "", () -> stepRoadStyle(1))
+				.label(QcToolsScreen::roadLabel).accent(QcUi.color(QcTool.ROAD))
+				.tip("The style the road tool lays; click or ‹ › to step through the plan's road styles"));
+		this.addRenderableWidget(new Chip(this.right + 8 + arrow + labelW, y, arrow, CHIP_H, "›", () -> stepRoadStyle(1))
+				.tip("Next road style of the plan"));
+		this.addRenderableWidget(new Chip(this.right + 4 + inner - newW, y, newW, CHIP_H, "New", this::newRoadStyle)
+				.tip("Start a new road style (no blocks yet) for the next roads"));
+		y += ROW;
+		int half = (inner - 2) / 2;
+		this.addRenderableWidget(new Chip(this.right + 4, y, half, CHIP_H, "Blocks…", () -> {
+			commit();
+			if (ensureRoadStyle()) {
+				this.minecraft.setScreen(new QcBlockChooserScreen(this, QcClientState.roadStyle));
+			}
+		}).accent(QcUi.OK).tip("Choose the blocks of this road style's lanes"));
+		this.addRenderableWidget(new Chip(this.right + 6 + half, y, half, CHIP_H, "Pick aimed", () -> {
+			String style = this.aimedRoad == null ? null : QcClientState.plan.roads().get(this.aimedRoad);
+			if (style != null) {
+				QcClientState.roadStyle = style;
+				this.roadNote = null;
+			}
+		}).selected(() -> this.aimedRoad != null
+				&& QcClientState.roadStyle.equals(QcClientState.plan.roads().get(this.aimedRoad)))
+				.tip(this.aimedRoad == null ? "Aim at a planned road before opening this screen"
+						: "Lay the style of the aimed road (" + QcClientState.plan.roads().get(this.aimedRoad) + ")"));
+	}
+
+	/** Clear terrain card: the clear margin and the ground block (moved here from the old Terrain panel). */
+	private void initClearCard(int inner) {
+		int y = this.top + QcUi.HEADER_HEIGHT + 3;
+		this.addRenderableWidget(new Stepper(this.right + 4 + inner - 48, y, 48, CHIP_H, "clear margin",
+				0, QcPlan.MAX_CLEAR_MARGIN, () -> this.margin, value -> this.margin = value)
+				.tip("Blocks cleared around every planned cell (0-" + QcPlan.MAX_CLEAR_MARGIN + ")"));
+		y += ROW;
+		this.ground = new EditBox(this.font, this.right + 45, y, inner - 41, CHIP_H, Component.literal("ground"));
+		this.ground.setMaxLength(128);
+		this.ground.setValue(QcClientState.plan.ground);
+		this.ground.setHint(Component.literal("block id, e.g. grass_block").withStyle(st -> st.withColor(0x667080)));
+		this.ground.setTooltip(QcUi.tip("Fills the floor plane of cleared cells; leave empty for none"));
+		this.addRenderableWidget(this.ground);
+	}
+
+	/** Tweak card: the partition a floor, line or box shape sets on every shared side inside it. */
+	private void initTweakCard(int inner) {
+		int y = this.top + QcUi.HEADER_HEIGHT + 3;
+		int quarter = (inner - 6) / 4;
+		QcPlan.Partition[] partitions = QcTweakScreen.PARTITIONS;
+		for (int i = 0; i < partitions.length; i++) {
+			QcPlan.Partition partition = partitions[i];
+			this.addRenderableWidget(new Chip(this.right + 4 + i * (quarter + 2), y, quarter, CHIP_H,
+					QcUi.partitionName(partition), () -> QcClientState.tweakPartition = partition)
+					.selected(() -> QcClientState.tweakPartition == partition).accent(QcUi.color(QcTool.TWEAK))
+					.tip("With a floor, line or box shape, the tweak tool sets every shared side inside it to: "
+							+ QcTweakScreen.partitionTip(partition).toLowerCase(java.util.Locale.ROOT)));
+		}
+	}
+
+	/** Template card: the template the tool stamps and its turn; the template screen picks another. */
+	private void initTemplateCard(int inner) {
+		int y = this.top + QcUi.HEADER_HEIGHT + 3;
+		int half = (inner - 2) / 2;
+		this.addRenderableWidget(new Chip(this.right + 4, y, half, CHIP_H, "Templates…", () -> {
+			commit();
+			this.minecraft.setScreen(new QcTemplateScreen(this));
+		}).accent(QcUi.color(QcTool.TEMPLATE)).tip("Pick, save or delete plan templates"));
+		this.addRenderableWidget(new Chip(this.right + 6 + half, y, half, CHIP_H, "", () ->
+				QcClientState.templateRotation = (QcClientState.templateRotation + 1) % 4)
+				.label(() -> "Turn ↻ " + QcClientState.templateRotation * 90 + "°")
+				.tip("Turn the template a quarter (R in the world)"));
+	}
+
+	/** Switches the tool; a tool with another settings card rebuilds the screen so the card follows it. */
+	private void setTool(QcTool tool) {
+		QcClientState.tool = tool;
+		QcClientState.points.clear();
+		if (QcToolCards.Card.of(tool) != this.card) {
+			this.roadNote = null;
+			this.rebuildWidgets();
+		}
+	}
+
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
 		this.renderBackground(g);
@@ -262,16 +347,8 @@ public class QcToolsScreen extends Screen {
 		QcUi.panel(g, this.font, this.left, this.shapeTop, COLUMN, 48, "Shape", QcUi.ACCENT);
 		QcUi.panel(g, this.font, this.left, this.planTop, COLUMN, 48,
 				this.font.plainSubstrByWidth("Plan · " + QcUi.planSummary(), COLUMN - 10), QcUi.ACCENT);
-		QcUi.panel(g, this.font, this.left, this.terrainTop, COLUMN, 48, "Terrain", QcUi.color(QcTool.CLEAR));
 		int body = QcUi.HEADER_HEIGHT + 3;
-		g.drawString(this.font, "clear margin", this.left + 6, this.terrainTop + body + 3, QcUi.MUTED, false);
-		g.drawString(this.font, "ground", this.left + 6, this.terrainTop + body + ROW + 3, QcUi.MUTED, false);
-
-		this.roadStyle.visible = tool == QcTool.ROAD;
-		QcUi.panel(g, this.font, this.right, this.top, COLUMN, BUILDING_HEIGHT, "Building", QcUi.color(QcTool.UNITS));
-		String status = styleStatus();
-		g.drawString(this.font, this.font.plainSubstrByWidth(status, COLUMN - 12), this.right + 6,
-				this.top + body + 2 * ROW + 3, missingRoles() > 0 ? QcUi.WARN : QcUi.MUTED, false);
+		renderCard(g, body);
 		QcUi.panel(g, this.font, this.right, this.modTop, COLUMN, 80, "Modifiers"
 				+ (QcClientState.modifiers.isActive() ? " · on" : ""), QcUi.WARN);
 		int y = this.modTop + body + 2 * ROW + 2;
@@ -287,14 +364,53 @@ public class QcToolsScreen extends Screen {
 		super.render(g, mouseX, mouseY, delta);
 	}
 
+	/** The settings card's panel, labels and status line (its widgets come from init). */
+	private void renderCard(GuiGraphics g, int body) {
+		QcTool tool = this.card == QcToolCards.Card.BUILDING ? QcTool.UNITS : QcClientState.tool;
+		QcUi.panel(g, this.font, this.right, this.top, COLUMN, CARD_HEIGHT, this.card.title, QcUi.color(tool));
+		int x = this.right + 6;
+		int width = COLUMN - 12;
+		String status;
+		int colour = QcUi.MUTED;
+		int statusY = this.top + body + 2 * ROW + 3;
+		switch (this.card) {
+			case BUILDING -> {
+				status = styleStatus();
+				colour = missingRoles() > 0 ? QcUi.WARN : QcUi.MUTED;
+			}
+			case ROAD -> {
+				status = this.roadNote != null ? this.roadNote : roadStatus();
+				colour = this.roadNote != null || !roadMissing().isEmpty() ? QcUi.WARN : QcUi.MUTED;
+			}
+			case CLEAR -> {
+				g.drawString(this.font, "clear margin", x, this.top + body + 3, QcUi.MUTED, false);
+				g.drawString(this.font, "ground", x, this.top + body + ROW + 3, QcUi.MUTED, false);
+				status = "the clear tool carves cells; ground fills their floor";
+			}
+			case TWEAK -> {
+				g.drawString(this.font, this.font.plainSubstrByWidth("one unit: a click opens its sides and doors", width),
+						x, this.top + body + ROW + 3, QcUi.MUTED, false);
+				status = "2+ units: the shape sets " + QcUi.partitionName(QcClientState.tweakPartition) + " inside it";
+			}
+			case TEMPLATE -> {
+				String name = QcClientState.template == null || QcClientState.templateName.isEmpty()
+						? "no template picked → Templates…" : "stamps: " + QcClientState.templateName;
+				g.drawString(this.font, this.font.plainSubstrByWidth(name, width), x, this.top + body + ROW + 3,
+						QcClientState.template == null ? QcUi.WARN : QcUi.TEXT, false);
+				status = "array and mirror repeat it; R turns it in the world";
+			}
+			default -> status = "";
+		}
+		g.drawString(this.font, this.font.plainSubstrByWidth(status, width), x, statusY, colour, false);
+	}
+
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
 		if (!(this.getFocused() instanceof EditBox box && box.isFocused())) {
 			if (keyCode >= GLFW.GLFW_KEY_1 && keyCode <= GLFW.GLFW_KEY_9) {
 				int index = keyCode - GLFW.GLFW_KEY_1;
 				if (index < QcTool.values().length) {
-					QcClientState.tool = QcTool.values()[index];
-					QcClientState.points.clear();
+					setTool(QcTool.values()[index]);
 					return true;
 				}
 			}
@@ -396,19 +512,83 @@ public class QcToolsScreen extends Screen {
 		}
 	}
 
-	/** Cycles the road tool's style through the plan's road styles. */
-	private void stepRoadStyle() {
+	/** The plan's road styles, in order. */
+	private static java.util.List<String> roadStyles() {
 		java.util.List<String> names = new java.util.ArrayList<>();
 		QcClientState.plan.styles().forEach((name, style) -> {
 			if (style.kind().equals(com.qccore.core.qc.Roles.ROAD)) {
 				names.add(name);
 			}
 		});
-		if (names.isEmpty()) {
-			QcClientState.say("QC: no road style yet; the road tool creates '" + QcClientState.roadStyle + "', or add one under Blocks");
+		return names;
+	}
+
+	/** "street · 12 cells", or "street · new" for a style no road uses (or that doesn't exist yet). */
+	static String roadLabel() {
+		String name = QcClientState.roadStyle;
+		long cells = QcClientState.plan.roads().values().stream().filter(name::equals).count();
+		return name + " · " + (cells == 0 ? "new" : cells + (cells == 1 ? " cell" : " cells"));
+	}
+
+	/** The required road roles of the active road style without a block (all of them when it doesn't exist yet). */
+	private static java.util.Set<String> roadMissing() {
+		com.qccore.core.qc.BlockChoice style = QcClientState.plan.styles().get(QcClientState.roadStyle);
+		if (style == null) {
+			return new com.qccore.core.qc.BlockChoice(com.qccore.core.qc.Roles.ROAD).missing();
+		}
+		if (!style.kind().equals(com.qccore.core.qc.Roles.ROAD)) {
+			return java.util.Set.of();
+		}
+		return style.missing();
+	}
+
+	/** What the road style still lacks, in plain words: "blocks complete" or "lanes 2, 3 without a block → Blocks…". */
+	static String roadStatus() {
+		com.qccore.core.qc.BlockChoice style = QcClientState.plan.styles().get(QcClientState.roadStyle);
+		if (style != null && !style.kind().equals(com.qccore.core.qc.Roles.ROAD)) {
+			return "'" + QcClientState.roadStyle + "' is a " + style.kind() + " style → New";
+		}
+		return QcToolCards.roadStatus(roadMissing());
+	}
+
+	/** Steps the road tool's style through the plan's road styles; with one or none it says so on the card. */
+	private void stepRoadStyle(int delta) {
+		java.util.List<String> names = roadStyles();
+		if (names.isEmpty() || names.size() == 1 && names.get(0).equals(QcClientState.roadStyle)) {
+			// in-screen word: the HUD that say() writes to is hidden behind this screen (T33)
+			this.roadNote = names.isEmpty() ? "no road style yet: the first road makes '" + QcClientState.roadStyle + "'"
+					: "the plan has one road style; New starts another";
 			return;
 		}
-		QcClientState.roadStyle = names.get(Math.floorMod(names.indexOf(QcClientState.roadStyle) + 1, names.size()));
+		this.roadNote = null;
+		int index = names.indexOf(QcClientState.roadStyle);
+		QcClientState.roadStyle = index < 0 ? names.get(delta > 0 ? 0 : names.size() - 1)
+				: names.get(Math.floorMod(index + delta, names.size()));
+	}
+
+	/** A new, empty road style named after the active one ("street 2", "street 3", ...), as one undoable edit. */
+	private void newRoadStyle() {
+		String name = QcToolCards.nextRoadName(QcClientState.roadStyle, QcClientState.plan.styles().keySet());
+		QcInteraction.editFromScreen(() -> QcClientState.plan.styles()
+				.putIfAbsent(name, new com.qccore.core.qc.BlockChoice(com.qccore.core.qc.Roles.ROAD)) == null);
+		QcClientState.roadStyle = name;
+		this.roadNote = null;
+	}
+
+	/** Makes sure the active road style exists (as the road tool would on its first road); false if a building style holds the name. */
+	private boolean ensureRoadStyle() {
+		com.qccore.core.qc.BlockChoice style = QcClientState.plan.styles().get(QcClientState.roadStyle);
+		if (style != null) {
+			if (!style.kind().equals(com.qccore.core.qc.Roles.ROAD)) {
+				this.roadNote = "'" + QcClientState.roadStyle + "' is a " + style.kind() + " style → New";
+				return false;
+			}
+			return true;
+		}
+		String name = QcClientState.roadStyle;
+		QcInteraction.editFromScreen(() -> QcClientState.plan.styles()
+				.putIfAbsent(name, new com.qccore.core.qc.BlockChoice(com.qccore.core.qc.Roles.ROAD)) == null);
+		return true;
 	}
 
 	/** Shows the plan's clear margin and ground block in the fields. */

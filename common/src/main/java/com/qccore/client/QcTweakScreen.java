@@ -30,7 +30,7 @@ public class QcTweakScreen extends Screen {
 	private static final int DOOR_X = 196;
 	private static final int DOOR_W = 32;
 	private static final UnitSide[] SIDES = {UnitSide.NORTH, UnitSide.EAST, UnitSide.SOUTH, UnitSide.WEST};
-	private static final QcPlan.Partition[] PARTITIONS = {QcPlan.Partition.WALL, QcPlan.Partition.GATE,
+	static final QcPlan.Partition[] PARTITIONS = {QcPlan.Partition.WALL, QcPlan.Partition.GATE,
 			QcPlan.Partition.OPEN, QcPlan.Partition.DESIGN};
 
 	private final Cell cell;
@@ -196,7 +196,7 @@ public class QcTweakScreen extends Screen {
 		};
 	}
 
-	private static String partitionTip(QcPlan.Partition partition) {
+	static String partitionTip(QcPlan.Partition partition) {
 		return switch (partition) {
 			case WALL -> "A party wall";
 			case GATE -> "A wall with a gate (rooms)";
