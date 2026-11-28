@@ -385,12 +385,12 @@ public class QcToolsScreen extends Screen {
 			case CLEAR -> {
 				g.drawString(this.font, "clear margin", x, this.top + body + 3, QcUi.MUTED, false);
 				g.drawString(this.font, "ground", x, this.top + body + ROW + 3, QcUi.MUTED, false);
-				status = "the clear tool carves cells; ground fills their floor";
+				status = "carves cells; ground fills their floor";
 			}
 			case TWEAK -> {
-				g.drawString(this.font, this.font.plainSubstrByWidth("one unit: a click opens its sides and doors", width),
+				g.drawString(this.font, this.font.plainSubstrByWidth("one unit: a click opens its sides, doors", width),
 						x, this.top + body + ROW + 3, QcUi.MUTED, false);
-				status = "2+ units: the shape sets " + QcUi.partitionName(QcClientState.tweakPartition) + " inside it";
+				status = "2+ units: sets " + QcUi.partitionName(QcClientState.tweakPartition) + " inside the shape";
 			}
 			case TEMPLATE -> {
 				String name = QcClientState.template == null || QcClientState.templateName.isEmpty()

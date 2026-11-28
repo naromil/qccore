@@ -34,7 +34,7 @@ final class QcToolCards {
 		}
 	}
 
-	/** "blocks complete", or what a road style lacks: "lanes 2, 3 without a block → Blocks…" (lane floors by lane). */
+	/** "blocks complete", or what a road style lacks: "lanes 2, 3: no block → Blocks…" (lane floors by lane). */
 	static String roadStatus(Set<String> missing) {
 		if (missing.isEmpty()) {
 			return "blocks complete";
@@ -53,7 +53,7 @@ final class QcToolCards {
 			parts.add((lanes.size() == 1 ? "lane " : "lanes ") + String.join(", ", lanes));
 		}
 		parts.addAll(other);
-		return String.join(", ", parts) + " without a block → Blocks…";
+		return String.join(", ", parts) + ": no block → Blocks…";
 	}
 
 	/** The next free name after {@code current}: "street" → "street 2", "street 2" → "street 3" (skipping taken ones). */
